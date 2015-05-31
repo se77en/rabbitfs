@@ -2,15 +2,21 @@ package raftkv
 
 import "github.com/goraft/raft"
 
+func init() {
+	raft.RegisterCommand(&putCommand{})
+	raft.RegisterCommand(&delCommand{})
+	raft.RegisterCommand(&getCommand{})
+}
+
 type putCommand struct {
-	key []byte
-	val []byte
+	Key []byte
+	Val []byte
 }
 
 func newPutCommand(key, val []byte) *putCommand {
 	return &putCommand{
-		key: key,
-		val: val,
+		Key: key,
+		Val: val,
 	}
 }
 
@@ -24,17 +30,17 @@ func (pcmd *putCommand) CommandName() string {
 // It puts a key-value pair in KVstore
 func (pcmd *putCommand) Apply(server raft.Server) (interface{}, error) {
 	kvs := server.Context().(KVstore)
-	err := kvs.Put(pcmd.key, pcmd.val)
+	err := kvs.Put(pcmd.Key, pcmd.Val)
 	return nil, err
 }
 
 type delCommand struct {
-	key []byte
+	Key []byte
 }
 
 func newDelCommand(key []byte) *delCommand {
 	return &delCommand{
-		key: key,
+		Key: key,
 	}
 }
 
@@ -44,6 +50,25 @@ func (dcmd *delCommand) CommandName() string {
 
 func (dcmd *delCommand) Apply(server raft.Server) (interface{}, error) {
 	kvs := server.Context().(KVstore)
-	err := kvs.Delete(dcmd.key)
+	err := kvs.Delete(dcmd.Key)
 	return nil, err
+}
+
+type getCommand struct {
+	Key []byte
+}
+
+func newGetCommand(key []byte) *getCommand {
+	return &getCommand{
+		Key: key,
+	}
+}
+
+func (gcmd *getCommand) CommandName() string {
+	return "get"
+}
+
+func (gcmd *getCommand) Apply(server raft.Server) (interface{}, error) {
+	kvs := server.Context().(KVstore)
+	return kvs.Get(gcmd.Key)
 }
