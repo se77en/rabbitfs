@@ -232,7 +232,7 @@ func (rkv *Raftkv) Get(key []byte) ([]byte, error) {
 			if len(b) > 0 {
 				return b, err
 			}
-			err = fmt.Errorf("leveldb get empty")
+			err = fmt.Errorf("kvstore get empty")
 			return nil, err
 		}
 		return nil, err
