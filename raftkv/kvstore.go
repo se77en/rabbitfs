@@ -1,8 +1,6 @@
 package raftkv
 
-import (
-	"github.com/syndtr/goleveldb/leveldb"
-)
+import "github.com/syndtr/goleveldb/leveldb"
 
 // KVstore interface has get and set function to be implemented
 type KVstore interface {

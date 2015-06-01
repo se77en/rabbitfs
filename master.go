@@ -44,7 +44,7 @@ func runMaster() {
 
 	// master peers
 	peers := strings.Split(*mPeers, ",")
-	transporter := raft.NewHTTPTransporter("/raft", 0)
+	// transporter := raft.NewHTTPTransporter("/raft", 0)
 	mst := &master{}
 	raft.NewServer(la, *mFolder, transporter, nil, mst, "")
 

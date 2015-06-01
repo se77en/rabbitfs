@@ -3,6 +3,7 @@ package raftkv
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -48,7 +49,9 @@ func NewRaftkv(
 		httpAddr: connectionString,
 		port:     port,
 	}
-
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
 	// Clear old cluster's configuration
 	if len(rkv.peers) > 0 {
 		if err = os.RemoveAll(path.Join(rkv.dataDir, "conf")); err != nil {
@@ -75,12 +78,12 @@ func NewRaftkv(
 	}
 
 	rkv.router.HandleFunc("/raftkv_join", rkv.joinHandler)
+	rkv.router.HandleFunc("/raftkv_leave", rkv.leaveHandler)
 	rkv.router.HandleFunc("/raftkv_put", rkv.redirectedPut)
 	rkv.router.HandleFunc("/raftkv_del", rkv.redirectedDel)
 	rkv.router.HandleFunc("/raftkv_get", rkv.redirectedGet)
 
 	if len(rkv.peers) > 0 {
-		time.Sleep(time.Duration(1000 * time.Millisecond))
 		// fmt.Println(peers)
 		err := rkv.Join(rkv.peers)
 		if err != nil {
@@ -101,7 +104,11 @@ func NewRaftkv(
 			Name:             rkv.server.Name(),
 			ConnectionString: connectionString,
 		})
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	return rkv, nil
 }
 
@@ -117,13 +124,19 @@ func (rkv *Raftkv) Join(peers []string) (e error) {
 		return err
 	}
 
+	// for _, peer := range peers {
+	// 	if e = rkv.server.AddPeer(peer, peer); e != nil {
+	// 		return e
+	// 	}
+	// }
+
 	for _, peer := range peers {
 		logger.Printf("i am %s: joining %s\n", rkv.server.Name(), peer)
 		if peer == rkv.httpAddr {
 			continue
 		}
 		target := fmt.Sprintf("%s/raftkv_join", peer)
-		_, err := http.Post(target, "application/json", &b)
+		_, err := postAndError(target, "application/json", &b)
 		if err != nil {
 			e = err
 			continue
@@ -133,6 +146,36 @@ func (rkv *Raftkv) Join(peers []string) (e error) {
 	}
 
 	return e
+}
+
+func postAndError(target string, contentType string, b *bytes.Buffer) ([]byte, error) {
+	resp, err := http.Post(target, contentType, b)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	reply, _ := ioutil.ReadAll(resp.Body)
+	statusCode := resp.StatusCode
+	if statusCode != http.StatusOK {
+		return nil, errors.New(string(reply))
+	}
+	return reply, nil
+}
+
+// Leave make rkv leaves the cluster
+func (rkv *Raftkv) Leave() error {
+	logger.Println(rkv.server.Name(), " is leaving")
+	command := &raft.DefaultLeaveCommand{
+		Name: rkv.server.Name(),
+	}
+	if _, err := rkv.server.Do(command); err != nil {
+		if err == raft.NotLeaderError {
+			_, err = rkv.redirectToLeader(rkv.server.Leader(), "raftkv_leave", command)
+			return err
+		}
+		return err
+	}
+	return nil
 }
 
 // HandleFunc a hack around Gorilla mux not providing the correct net/http
@@ -153,6 +196,25 @@ func (rkv *Raftkv) joinHandler(w http.ResponseWriter, req *http.Request) {
 	if _, err := rkv.server.Do(command); err != nil {
 		switch err {
 		case raft.NotLeaderError:
+			if _, err = rkv.redirectToLeader(rkv.server.Leader(), "raftkv_join", command); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+func (rkv *Raftkv) leaveHandler(w http.ResponseWriter, req *http.Request) {
+	command := &raft.DefaultLeaveCommand{}
+	if err := json.NewDecoder(req.Body).Decode(&command); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := rkv.server.Do(command); err != nil {
+		switch err {
+		case raft.NotLeaderError:
 			rkv.redirectToLeader(rkv.server.Leader(), "raftkv_join", command)
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -166,7 +228,7 @@ func (rkv *Raftkv) redirectedPut(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println(*command)
+	logger.Println("incoming putcommand: ", command)
 	if _, err := rkv.server.Do(command); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -179,7 +241,7 @@ func (rkv *Raftkv) redirectedDel(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println("incoming putcommand: ", command)
+	logger.Println("incoming delcommand: ", command)
 	if _, err := rkv.server.Do(command); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -192,50 +254,37 @@ func (rkv *Raftkv) redirectedGet(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println("Get incoming: ", *command)
+	logger.Println("incoming getcommand: ", command)
 	val, err := rkv.kvs.Get(command.Key)
 	if err != nil {
-		logger.Println(err)
-		w.Write(nil)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	w.Write(val)
 }
 
-func (rkv *Raftkv) redirectToLeader(leader string, op string, command raft.Command) (interface{}, error) {
+func (rkv *Raftkv) redirectToLeader(leader string, op string, command raft.Command) ([]byte, error) {
 	var b bytes.Buffer
 	if err := json.NewEncoder(&b).Encode(command); err != nil {
 		return nil, err
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%s/%s", rkv.server.Leader(), op), "application/json", &b)
+	reply, err := postAndError(fmt.Sprintf("%s/%s", rkv.server.Leader(), op), "application/json", &b)
 	if err != nil {
 		return nil, err
 	}
-	val, err := ioutil.ReadAll(resp.Body)
+	// val, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	return val, nil
+	return reply, nil
 }
 
 // Get gets a value by key
 func (rkv *Raftkv) Get(key []byte) ([]byte, error) {
 	getCmd := newGetCommand(key)
 	val, err := rkv.server.Do(getCmd)
-	// val, err := rkv.kvs.Get(key)
 	if err == raft.NotLeaderError {
-		val, err := rkv.redirectToLeader(rkv.server.Leader(), "raftkv_get", getCmd)
-		if err != nil {
-			return nil, err
-		}
-		if b, ok := val.([]byte); ok {
-			if len(b) > 0 {
-				return b, err
-			}
-			err = fmt.Errorf("kvstore get empty")
-			return nil, err
-		}
-		return nil, err
+		return rkv.redirectToLeader(rkv.server.Leader(), "raftkv_get", getCmd)
 	}
 	if val != nil {
 		return val.([]byte), err
@@ -265,26 +314,7 @@ func (rkv *Raftkv) Del(key []byte) error {
 	return err
 }
 
-// AddPeers adds peers to cluster
-func (rkv *Raftkv) AddPeers(peers []string) error {
-	leader := rkv.server.Leader()
-	if leader != "" {
-		for _, peer := range peers {
-			if err := rkv.server.AddPeer(peer, peer); err != nil {
-				return err
-			}
-		}
-	} else if rkv.server.IsLogEmpty() {
-		if _, err := rkv.server.Do(&raft.DefaultJoinCommand{
-			Name:             rkv.server.Name(),
-			ConnectionString: rkv.server.Name(),
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
+// ListenAndServe starts the httpServer
 func (rkv *Raftkv) ListenAndServe() {
 	httpServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", rkv.port),

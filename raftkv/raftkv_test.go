@@ -10,6 +10,8 @@ import (
 	"github.com/visionmedia/go-bench"
 )
 
+//TODO: refactor these test
+
 var testPeers = []string{
 	"http://127.0.0.1:8787",
 	"http://127.0.0.1:8788",
@@ -18,9 +20,6 @@ var testPeers = []string{
 
 func TestMultiRaftkv(t *testing.T) {
 	defer removeDir()
-	os.Mkdir("./raft1", 0700)
-	os.Mkdir("./raft2", 0700)
-	os.Mkdir("./raft3", 0700)
 	fmt.Println("testing multi raftkv")
 	// creating new leveldb kvstore
 	kv1, _ := NewLevelDB("./leveldb1")
@@ -72,11 +71,10 @@ func TestMultiRaftkv(t *testing.T) {
 		500*time.Millisecond,
 		0,
 	)
-
-	go rkv3.ListenAndServe()
 	if err != nil {
 		t.Error(err)
 	}
+	go rkv3.ListenAndServe()
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -115,6 +113,31 @@ func TestMultiRaftkv(t *testing.T) {
 		logger.Println("expected error: ", err)
 	}
 
+	// Test Join cluster
+	kv4, _ := NewLevelDB("./leveldb4")
+	rkv4, err := NewRaftkv(
+		testPeers,
+		kv4,
+		"./raft4",
+		"http://127.0.0.1",
+		8790,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	go rkv4.ListenAndServe()
+	rkv4.Join(testPeers)
+	time.Sleep(1000 * time.Millisecond)
+	if val, err = rkv4.Get([]byte("test_key1")); err != nil {
+		t.Error(err)
+	} else {
+		logger.Println("get val from rkv4: ", string(val))
+	}
+	rkv4.Leave()
+	time.Sleep(1 * time.Second)
 }
 
 func removeDir() {
@@ -124,6 +147,8 @@ func removeDir() {
 	os.RemoveAll("./leveldb2")
 	os.RemoveAll("./raft3")
 	os.RemoveAll("./leveldb3")
+	os.RemoveAll("./raft4")
+	os.RemoveAll("./leveldb4")
 }
 
 func BenchmarkPut(b *testing.B) {
@@ -148,9 +173,6 @@ func BenchmarkPut(b *testing.B) {
 		0,
 	)
 
-	// go rkv1.ListenAndServe()
-	time.Sleep(500 * time.Millisecond)
-
 	rkv2, _ := NewRaftkv(
 		testPeers,
 		kv2,
@@ -162,9 +184,6 @@ func BenchmarkPut(b *testing.B) {
 		0,
 	)
 
-	// go rkv2.ListenAndServe()
-	time.Sleep(300 * time.Millisecond)
-
 	_, _ = NewRaftkv(
 		testPeers,
 		kv3,
@@ -175,9 +194,6 @@ func BenchmarkPut(b *testing.B) {
 		500*time.Millisecond,
 		0,
 	)
-
-	// go rkv3.ListenAndServe()
-	time.Sleep(200 * time.Millisecond)
 
 	ops := 1000
 	ben := bench.Start("RAFTKV-PUT")
