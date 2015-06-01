@@ -25,6 +25,7 @@ type Raftkv struct {
 	dataDir  string
 	router   *mux.Router
 	httpAddr string
+	port     int
 }
 
 // NewRaftkv returns a new Raftkv and an error
@@ -45,6 +46,7 @@ func NewRaftkv(
 		dataDir:  dir,
 		router:   mux.NewRouter(),
 		httpAddr: connectionString,
+		port:     port,
 	}
 
 	// Clear old cluster's configuration
@@ -121,7 +123,6 @@ func (rkv *Raftkv) Join(peers []string) (e error) {
 			continue
 		}
 		target := fmt.Sprintf("%s/raftkv_join", peer)
-		logger.Println("target: " + target)
 		_, err := http.Post(target, "application/json", &b)
 		if err != nil {
 			e = err
@@ -191,7 +192,7 @@ func (rkv *Raftkv) redirectedGet(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println("Get incoming: ", &command)
+	logger.Println("Get incoming: ", *command)
 	val, err := rkv.kvs.Get(command.Key)
 	if err != nil {
 		logger.Println(err)
@@ -221,7 +222,6 @@ func (rkv *Raftkv) redirectToLeader(leader string, op string, command raft.Comma
 func (rkv *Raftkv) Get(key []byte) ([]byte, error) {
 	getCmd := newGetCommand(key)
 	val, err := rkv.server.Do(getCmd)
-	logger.Println(getCmd)
 	// val, err := rkv.kvs.Get(key)
 	if err == raft.NotLeaderError {
 		val, err := rkv.redirectToLeader(rkv.server.Leader(), "raftkv_get", getCmd)
@@ -283,4 +283,14 @@ func (rkv *Raftkv) AddPeers(peers []string) error {
 		}
 	}
 	return nil
+}
+
+func (rkv *Raftkv) ListenAndServe() {
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", rkv.port),
+		Handler: rkv.router,
+	}
+	if err := httpServer.ListenAndServe(); err != nil {
+		fmt.Printf("raftkv listen and serve error: %s\n", err)
+	}
 }

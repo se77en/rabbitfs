@@ -3,10 +3,11 @@ package raftkv
 import (
 	"bytes"
 	"fmt"
-	"net/http"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/visionmedia/go-bench"
 )
 
 var testPeers = []string{
@@ -40,7 +41,7 @@ func TestMultiRaftkv(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	go listenAndServe(8787, rkv1.router)
+	go rkv1.ListenAndServe()
 	time.Sleep(500 * time.Millisecond)
 
 	rkv2, err := NewRaftkv(
@@ -57,7 +58,7 @@ func TestMultiRaftkv(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	go listenAndServe(8788, rkv2.router)
+	go rkv2.ListenAndServe()
 
 	time.Sleep(300 * time.Millisecond)
 
@@ -72,22 +73,12 @@ func TestMultiRaftkv(t *testing.T) {
 		0,
 	)
 
-	go listenAndServe(8789, rkv3.router)
+	go rkv3.ListenAndServe()
 	if err != nil {
 		t.Error(err)
 	}
 
-	time.Sleep(500 * time.Millisecond)
-	if err = rkv1.AddPeers([]string{
-		"http://127.0.0.1:8788",
-		"http://127.0.0.1:8789",
-	}); err != nil {
-		t.Error(err)
-	}
-
-	// fmt.Println("this is the leader: ", rkv1.server.Leader())
-
-	// time.Sleep(5 * time.Second)
+	time.Sleep(200 * time.Millisecond)
 
 	if err = rkv2.Put([]byte("test_key1"), []byte("test_val1")); err != nil {
 		t.Error(err)
@@ -135,12 +126,98 @@ func removeDir() {
 	os.RemoveAll("./leveldb3")
 }
 
-func listenAndServe(port int, r http.Handler) {
-	httpServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: r,
+func BenchmarkPut(b *testing.B) {
+	defer removeDir()
+	os.Mkdir("./raft1", 0700)
+	os.Mkdir("./raft2", 0700)
+	os.Mkdir("./raft3", 0700)
+	fmt.Println("testing multi raftkv")
+	// creating new leveldb kvstore
+	kv1, _ := NewLevelDB("./leveldb1")
+	kv2, _ := NewLevelDB("./leveldb2")
+	kv3, _ := NewLevelDB("./leveldb3")
+
+	_, _ = NewRaftkv(
+		testPeers,
+		kv1,
+		"./raft1",
+		"http://127.0.0.1",
+		8787,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+
+	// go rkv1.ListenAndServe()
+	time.Sleep(500 * time.Millisecond)
+
+	rkv2, _ := NewRaftkv(
+		testPeers,
+		kv2,
+		"./raft2",
+		"http://127.0.0.1",
+		8788,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+
+	// go rkv2.ListenAndServe()
+	time.Sleep(300 * time.Millisecond)
+
+	_, _ = NewRaftkv(
+		testPeers,
+		kv3,
+		"./raft3",
+		"http://127.0.0.1",
+		8789,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+
+	// go rkv3.ListenAndServe()
+	time.Sleep(200 * time.Millisecond)
+
+	ops := 1000
+	ben := bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
 	}
-	if err := httpServer.ListenAndServe(); err != nil {
-		fmt.Printf("raftkv listen and serve error: %s\n", err)
+	ben.End(ops)
+
+	ops = 5000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
 	}
+	ben.End(ops)
+
+	ops = 10000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 50000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 100000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 100000
+	ben = bench.Start("RAFTKV-GET")
+	for i := 0; i < ops; i++ {
+		_, _ = rkv2.Get([]byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
 }
