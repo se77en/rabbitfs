@@ -30,6 +30,12 @@ func NewLevelDB(filename string) (*LeveldbKvstore, error) {
 // Get implements KVstore's Get function to get a value by key.
 // It returns ErrNotFound if the goleveldb does not contains the key.
 func (l *LeveldbKvstore) Get(key []byte) ([]byte, error) {
+	// should not modify goleveldb's returned value of Get function.
+	// so remove these comments in the future, maybe.
+	// v, e := l.db.Get(key, nil)
+	// retV := make([]byte, len(v))
+	// copy(retV, v)
+	// return retV, e
 	return l.db.Get(key, nil)
 }
 
