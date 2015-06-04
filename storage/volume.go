@@ -11,9 +11,22 @@ import (
 type Volume struct {
 	ID        uint32
 	StoreFile *os.File
-	mapping   Mapping
+	mapping   *Mapping
 	fileLock  sync.RWMutex
 	readOnly  bool
+}
+
+func NewVolume(id uint32, storeFile *os.File, mapFilename string) (*Volume, error) {
+	m, err := NewLevelDBMapping(mapFilename)
+	if err != nil {
+		return nil, err
+	}
+	return &Volume{
+		ID:        id,
+		StoreFile: storeFile,
+		mapping:   m,
+		readOnly:  true,
+	}, nil
 }
 
 // AppendNeedle appends needle to vol's StoreFile
