@@ -88,12 +88,10 @@ func (vol *Volume) GetNeedle(key uint64, cookie uint32) (*Needle, error) {
 	}, nil
 }
 
-// func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
-// 	offset, size, err := vol.mapping.Get(key, cookie)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	vol.fileLock.RLock()
-// 	defer vol.fileLock.RUnlock()
-
-// }
+func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
+	_, _, err := vol.mapping.Get(key, cookie)
+	if err != nil {
+		return err
+	}
+	return vol.mapping.Del(key, cookie)
+}
