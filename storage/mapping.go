@@ -3,6 +3,7 @@ package storage
 import "github.com/lilwulin/rabbitfs/raftkv"
 
 type Mapping struct {
+	// use raftkv's KVstore interface for convenience
 	kvstore raftkv.KVstore
 }
 

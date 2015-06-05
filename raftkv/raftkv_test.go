@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lilwulin/rabbitfs/helper"
 	"github.com/visionmedia/go-bench"
 )
 
@@ -19,7 +20,12 @@ var testPeers = []string{
 }
 
 func TestMultiRaftkv(t *testing.T) {
-	defer removeDir()
+	defer helper.DirRemover(
+		"./raft1", "./leveldb1",
+		"./raft2", "./leveldb2",
+		"./raft3", "./leveldb3",
+		"./raft4", "./leveldb4",
+	)
 	fmt.Println("testing multi raftkv")
 	// creating new leveldb kvstore
 	kv1, _ := NewLevelDB("./leveldb1")
@@ -140,19 +146,13 @@ func TestMultiRaftkv(t *testing.T) {
 	time.Sleep(1 * time.Second)
 }
 
-func removeDir() {
-	os.RemoveAll("./raft1")
-	os.RemoveAll("./leveldb1")
-	os.RemoveAll("./raft2")
-	os.RemoveAll("./leveldb2")
-	os.RemoveAll("./raft3")
-	os.RemoveAll("./leveldb3")
-	os.RemoveAll("./raft4")
-	os.RemoveAll("./leveldb4")
-}
-
 func BenchmarkPut(b *testing.B) {
-	defer removeDir()
+	defer helper.DirRemover(
+		"./raft1", "./leveldb1",
+		"./raft2", "./leveldb2",
+		"./raft3", "./leveldb3",
+		"./raft4", "./leveldb4",
+	)
 	os.Mkdir("./raft1", 0700)
 	os.Mkdir("./raft2", 0700)
 	os.Mkdir("./raft3", 0700)

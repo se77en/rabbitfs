@@ -16,8 +16,8 @@ type Volume struct {
 	readOnly  bool
 }
 
-func NewVolume(id uint32, storeFile *os.File, mapFilename string) (*Volume, error) {
-	m, err := NewLevelDBMapping(mapFilename)
+func NewVolume(id uint32, storeFile *os.File, mapFilePath string) (*Volume, error) {
+	m, err := NewLevelDBMapping(mapFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func NewVolume(id uint32, storeFile *os.File, mapFilename string) (*Volume, erro
 		ID:        id,
 		StoreFile: storeFile,
 		mapping:   m,
-		readOnly:  true,
+		readOnly:  false,
 	}, nil
 }
 
@@ -61,50 +61,64 @@ func (vol *Volume) AppendNeedle(n *Needle) error {
 	if _, err = vol.StoreFile.Write(csbytes); err != nil {
 		return err
 	}
-	// n.Padding = make([]byte, NeedlePaddingSize-(NeedleHeaderSize+n.Size+NeedleChecksumSize)%NeedlePaddingSize)
+
+	if _, err = vol.StoreFile.Write([]byte{n.NameSize}); err != nil {
+		return err
+	}
+
+	if _, err = vol.StoreFile.Write(n.Name); err != nil {
+		return err
+	}
+
 	if _, err = vol.StoreFile.Write(n.Padding); err != nil {
 		return err
 	}
 	// Add this <key,cookie>-<offset,size> pair to mapping
-	return vol.mapping.Put(n.Key, n.Cookie, uint32(offset), n.Size)
+	return vol.mapping.Put(n.Key, n.Cookie, uint32(offset), n.fullSize())
 }
 
 // GetNeedle gets the needle from volume by given <key, cookie>
 func (vol *Volume) GetNeedle(key uint64, cookie uint32) (*Needle, error) {
-	offset, size, err := vol.mapping.Get(key, cookie)
+	offset, fullsize, err := vol.mapping.Get(key, cookie)
 	if err != nil {
 		return nil, err
 	}
 	vol.fileLock.RLock()
 	defer vol.fileLock.RUnlock()
-	wholeSize := NeedleHeaderSize + size + NeedleChecksumSize
-	needleBytes := make([]byte, wholeSize)
+	needleBytes := make([]byte, fullsize)
 	readSize, err := vol.StoreFile.ReadAt(needleBytes, int64(offset))
 	if err != nil {
 		return nil, err
 	}
-	if uint32(readSize) != wholeSize {
-		return nil, fmt.Errorf("expected size %d, get size %d", wholeSize, readSize)
+	if uint32(readSize) != fullsize {
+		return nil, fmt.Errorf("expected size %d, get size %d", fullsize, readSize)
 	}
-	data := needleBytes[NeedleHeaderSize:size]
-	checkSum := BytesToUInt32(needleBytes[NeedleHeaderSize+size : wholeSize])
+	ncookie := BytesToUInt32(needleBytes[0:4])
+	nkey := BytesToUInt64(needleBytes[4:12])
+	size := BytesToUInt32(needleBytes[12:NeedleHeaderSize])
+	data := needleBytes[NeedleHeaderSize : NeedleHeaderSize+size]
+	checkSum := BytesToUInt32(needleBytes[NeedleHeaderSize+size : NeedleHeaderSize+size+4])
 	nCheckSum := newCheckSum(data)
 	if checkSum != nCheckSum {
 		return nil, errors.New("data on disk corrupted")
 	}
+	nameSizeIndex := NeedleHeaderSize + size + 4 // 4 means skip checksum
+	nameSize := needleBytes[nameSizeIndex]
+	nameIndex := nameSizeIndex + 1
+	name := needleBytes[nameIndex : nameIndex+uint32(nameSize)]
 	return &Needle{
-		Cookie:   BytesToUInt32(needleBytes[0:4]),
-		Key:      BytesToUInt64(needleBytes[4:12]),
-		Size:     BytesToUInt32(needleBytes[12:NeedleHeaderSize]),
+		Cookie:   ncookie,
+		Key:      nkey,
+		Size:     size,
 		Data:     data,
 		CheckSum: checkSum,
+		NameSize: nameSize,
+		Name:     name,
 	}, nil
 }
 
+// DelNeedle delete the <key,cookie>-<offset,size> pair in mapping
+// another go routine will reclaim the space occupied by deleted needle
 func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
-	_, _, err := vol.mapping.Get(key, cookie)
-	if err != nil {
-		return err
-	}
 	return vol.mapping.Del(key, cookie)
 }
