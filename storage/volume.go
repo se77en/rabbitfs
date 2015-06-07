@@ -9,24 +9,30 @@ import (
 
 // Volume is formed by multiple Needles
 type Volume struct {
-	ID        uint32
-	StoreFile *os.File
-	mapping   *Mapping
-	fileLock  sync.RWMutex
-	readOnly  bool
+	ID               uint32
+	deletedSize      uint64
+	StoreFile        *os.File
+	mapping          *Mapping
+	fileLock         sync.RWMutex
+	garbageThreshold float32
+	readOnly         bool
 }
 
-func NewVolume(id uint32, storeFile *os.File, mapFilePath string) (*Volume, error) {
+func NewVolume(id uint32, storeFile *os.File, mapFilePath string, threshold float32) (*Volume, error) {
 	m, err := NewLevelDBMapping(mapFilePath)
 	if err != nil {
 		return nil, err
 	}
-	return &Volume{
-		ID:        id,
-		StoreFile: storeFile,
-		mapping:   m,
-		readOnly:  false,
-	}, nil
+	v := &Volume{
+		ID:               id,
+		deletedSize:      0,
+		StoreFile:        storeFile,
+		mapping:          m,
+		garbageThreshold: threshold,
+		readOnly:         false,
+	}
+	cleaner.newVolumeChan <- v
+	return v, nil
 }
 
 // AppendNeedle appends needle to vol's StoreFile
@@ -118,7 +124,21 @@ func (vol *Volume) GetNeedle(key uint64, cookie uint32) (*Needle, error) {
 }
 
 // DelNeedle delete the <key,cookie>-<offset,size> pair in mapping
-// another go routine will reclaim the space occupied by deleted needle
+// the Cleaner will reclaim the space occupied by deleted needle
 func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
+	_, size, _ := vol.mapping.Get(key, cookie)
+	if size == 0 {
+		return nil
+	}
+	vol.fileLock.Lock()
+	defer vol.fileLock.Unlock()
+	vol.deletedSize += uint64(size)
+	fi, err := vol.StoreFile.Stat()
+	if err == nil {
+		return err
+	}
+	if float32(fi.Size())/float32(vol.deletedSize) > vol.garbageThreshold {
+		go func() { cleaner.cleanIDChan <- vol.ID }()
+	}
 	return vol.mapping.Del(key, cookie)
 }

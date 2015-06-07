@@ -46,10 +46,16 @@ func TestBehavior(t *testing.T) {
 		t.Error(err)
 	}
 	fmt.Println("Create Volume")
-	vol, err = NewVolume(0, file, "./test_mapping")
+	vol, err = NewVolume(0, file, "./test_mapping", 0.4)
 	if err != nil {
 		t.Error(err)
 	}
+
+	fmt.Println("Get non-existent key-cookie")
+	if _, _, err = vol.mapping.Get(1024, 1024); err == nil {
+		t.Error("expect error not found")
+	}
+
 	// Input
 	var n1I, n2I *Needle
 	var f1DataI, f2DataI []byte
@@ -182,7 +188,7 @@ func BenchmarkWriteAndRead(b *testing.B) {
 
 func getVolAndData() (*Volume, []byte) {
 	file, _ := os.OpenFile("./testData/data", os.O_RDWR|os.O_CREATE, 0644)
-	vol, _ := NewVolume(0, file, "./test_mapping")
+	vol, _ := NewVolume(0, file, "./test_mapping", 0.4)
 	f1DataI, _ := ioutil.ReadFile(path.Join(inputPath, pic1Name))
 	return vol, f1DataI
 }

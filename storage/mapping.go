@@ -31,6 +31,9 @@ func (m *Mapping) Get(key uint64, cookie uint32) (offset uint32, size uint32, er
 	UInt64ToBytes(keyBytes[0:8], key)
 	UInt32ToBytes(keyBytes[8:12], cookie)
 	val, err := m.kvstore.Get(keyBytes)
+	if err != nil {
+		return 0, 0, err
+	}
 	return BytesToUInt32(val[0:4]), BytesToUInt32(val[4:8]), err
 }
 
@@ -39,8 +42,4 @@ func (m *Mapping) Del(key uint64, cookie uint32) error {
 	UInt64ToBytes(keyBytes[0:8], key)
 	UInt32ToBytes(keyBytes[8:12], cookie)
 	return m.kvstore.Delete(keyBytes)
-}
-
-func (m *Mapping) increaseActualSize(needleSize uint32) {
-
 }
