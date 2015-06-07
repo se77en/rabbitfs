@@ -124,12 +124,6 @@ func (rkv *Raftkv) Join(peers []string) (e error) {
 		return err
 	}
 
-	// for _, peer := range peers {
-	// 	if e = rkv.server.AddPeer(peer, peer); e != nil {
-	// 		return e
-	// 	}
-	// }
-
 	for _, peer := range peers {
 		logger.Printf("i am %s: joining %s\n", rkv.server.Name(), peer)
 		if peer == rkv.httpAddr {

@@ -10,17 +10,27 @@ import (
 	"testing"
 
 	"github.com/lilwulin/rabbitfs/helper"
+	"github.com/visionmedia/go-bench"
 )
+
+var (
+	inputPath  string
+	outputPath string
+	pic1Name   string
+	pic2Name   string
+)
+
+func init() {
+	inputPath = "./testData/input"
+	outputPath = "./testData/output"
+	pic1Name = "Massimo.jpg"
+	pic2Name = "panda.jpg"
+}
 
 func TestBehavior(t *testing.T) {
 	fmt.Println("TESTING BEHAVIOR")
 	fmt.Println("======================")
 	defer helper.DirRemover("./testData/data", "./test_mapping")
-	inputPath := "./testData/input"
-	outputPath := "./testData/output"
-
-	pic1Name := "Massimo.jpg"
-	pic2Name := "panda.jpg"
 
 	testKey1 := 0
 	testCookie1 := rand.Uint32()
@@ -116,4 +126,63 @@ func TestNameTooLong(t *testing.T) {
 	if len(n.Name) > 0 {
 		t.Errorf("expect name to be empty but got %s", string(n.Name))
 	}
+}
+
+func BenchmarkWriteAndRead(b *testing.B) {
+	fmt.Println("BENCHMARKING")
+	fmt.Println("======================")
+	vol, f1DataI := getVolAndData()
+	ops := 5000
+	ben := bench.Start("Append-Needles-5000")
+	for i := 0; i < ops; i++ {
+		vol.AppendNeedle(NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name)))
+	}
+	ben.End(ops)
+	helper.DirRemover("./testData/data", "./test_mapping")
+
+	vol, f1DataI = getVolAndData()
+	ops = 10000
+	ben = bench.Start("Append-Needles-10000")
+	for i := 0; i < ops; i++ {
+		vol.AppendNeedle(NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name)))
+	}
+	ben.End(ops)
+	helper.DirRemover("./testData/data", "./test_mapping")
+
+	vol, f1DataI = getVolAndData()
+	ops = 20000
+	ben = bench.Start("Append-Needles-20000")
+	for i := 0; i < ops; i++ {
+		vol.AppendNeedle(NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name)))
+	}
+	ben.End(ops)
+
+	ops = 5000
+	ben = bench.Start("Get-Needles-5000")
+	for i := 0; i < ops; i++ {
+		_, _ = vol.GetNeedle(uint64(i), uint32(i))
+	}
+	ben.End(ops)
+
+	ops = 10000
+	ben = bench.Start("Get-Needles-10000")
+	for i := 0; i < ops; i++ {
+		_, _ = vol.GetNeedle(uint64(i), uint32(i))
+	}
+	ben.End(ops)
+
+	ops = 20000
+	ben = bench.Start("Get-Needles-20000")
+	for i := 0; i < ops; i++ {
+		_, _ = vol.GetNeedle(uint64(i), uint32(i))
+	}
+	ben.End(ops)
+	helper.DirRemover("./testData/data", "./test_mapping")
+}
+
+func getVolAndData() (*Volume, []byte) {
+	file, _ := os.OpenFile("./testData/data", os.O_RDWR|os.O_CREATE, 0644)
+	vol, _ := NewVolume(0, file, "./test_mapping")
+	f1DataI, _ := ioutil.ReadFile(path.Join(inputPath, pic1Name))
+	return vol, f1DataI
 }

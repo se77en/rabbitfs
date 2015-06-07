@@ -31,7 +31,7 @@ func NewLevelDB(filename string) (*LeveldbKvstore, error) {
 // It returns ErrNotFound if the goleveldb does not contains the key.
 func (l *LeveldbKvstore) Get(key []byte) ([]byte, error) {
 	// should not modify goleveldb's returned value of Get function.
-	// so remove these comments in the future, maybe.
+	// so uncomment these comments in the future, maybe.
 	// v, e := l.db.Get(key, nil)
 	// retV := make([]byte, len(v))
 	// copy(retV, v)
