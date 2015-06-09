@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"sync"
+
+	"github.com/syndtr/goleveldb/leveldb"
 )
+
+const KeyDeletedSize = "key.deleted.size"
 
 // Volume is formed by multiple Needles
 type Volume struct {
 	ID               uint32
-	deletedSize      uint64
 	StoreFile        *os.File
 	mapping          *Mapping
 	fileLock         sync.RWMutex
@@ -132,13 +135,38 @@ func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
 	}
 	vol.fileLock.Lock()
 	defer vol.fileLock.Unlock()
-	vol.deletedSize += uint64(size)
+	deletedSize, err := vol.increaseDeletedSize(uint64(size))
+	if err != nil {
+		return err
+	}
 	fi, err := vol.StoreFile.Stat()
 	if err == nil {
 		return err
 	}
-	if float32(fi.Size())/float32(vol.deletedSize) > vol.garbageThreshold {
+	if float32(deletedSize)/float32(fi.Size()) > vol.garbageThreshold {
 		go func() { cleaner.cleanIDChan <- vol.ID }()
 	}
 	return vol.mapping.Del(key, cookie)
+}
+
+func (vol *Volume) increaseDeletedSize(size uint64) (deletedSize uint64, err error) {
+	key := []byte(KeyDeletedSize)
+	sizeBytes, err := vol.mapping.kvstore.Get(key)
+	if err != nil {
+		if err == leveldb.ErrNotFound {
+			val := make([]byte, 8)
+			UInt64ToBytes(val, size)
+			err = vol.mapping.kvstore.Put(key, val)
+			return size, err
+		}
+		return
+	}
+	deletedSize = BytesToUInt64(sizeBytes)
+	deletedSize += size
+	deletedSizeByte := make([]byte, 8)
+	UInt64ToBytes(deletedSizeByte, deletedSize)
+	if err = vol.mapping.kvstore.Put(key, deletedSizeByte); err != nil {
+		return 0, err
+	}
+	return
 }
