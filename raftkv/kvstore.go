@@ -7,6 +7,7 @@ type KVstore interface {
 	Get(key []byte) ([]byte, error)
 	Put(key, val []byte) error
 	Delete(key []byte) error
+	Iter(func(keyBytes []byte) error) error
 }
 
 // LeveldbKvstore implements KVstore interface
@@ -48,4 +49,15 @@ func (l *LeveldbKvstore) Put(key, val []byte) error {
 // Delete implements KVstore's delete function. It deletes a key
 func (l *LeveldbKvstore) Delete(key []byte) error {
 	return l.db.Delete(key, nil)
+}
+
+func (l *LeveldbKvstore) Iter(kvsIterfunc func(keyBytes []byte) error) error {
+	iter := l.db.NewIterator(nil, nil)
+	for iter.Next() {
+		if err := kvsIterfunc(iter.Key()); err != nil {
+			return err
+		}
+	}
+	iter.Release()
+	return iter.Error()
 }

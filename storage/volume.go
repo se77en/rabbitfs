@@ -6,8 +6,11 @@ import (
 	"os"
 	"sync"
 
+	"github.com/lilwulin/rabbitfs/log"
 	"github.com/syndtr/goleveldb/leveldb"
 )
+
+// TODO: when to change readOnly???
 
 const KeyDeletedSize = "key.deleted.size"
 
@@ -16,25 +19,29 @@ type Volume struct {
 	ID               uint32
 	StoreFile        *os.File
 	mapping          *Mapping
+	mappingName      string
 	fileLock         sync.RWMutex
 	garbageThreshold float32
 	readOnly         bool
+	volTmp           *Volume
+	isCleaning       bool
 }
 
 func NewVolume(id uint32, storeFile *os.File, mapFilePath string, threshold float32) (*Volume, error) {
-	m, err := NewLevelDBMapping(mapFilePath)
+	m, err := NewLevelDBMapping(mapFilePath) // TODO: this needs to be changed
 	if err != nil {
 		return nil, err
 	}
 	v := &Volume{
 		ID:               id,
-		deletedSize:      0,
 		StoreFile:        storeFile,
+		mappingName:      mapFilePath,
 		mapping:          m,
 		garbageThreshold: threshold,
 		readOnly:         false,
+		isCleaning:       false,
 	}
-	cleaner.newVolumeChan <- v
+	// cleaner.newVolumeChan <- v
 	return v, nil
 }
 
@@ -45,6 +52,12 @@ func (vol *Volume) AppendNeedle(n *Needle) error {
 	}
 	vol.fileLock.Lock()
 	defer vol.fileLock.Unlock()
+	// cleaning process is very time-consuming.
+	// so I think it's necessary to handle AppendNeedle
+	// during cleaning
+	if vol.isCleaning {
+		return vol.volTmp.AppendNeedle(n)
+	}
 	offset, err := vol.StoreFile.Seek(0, os.SEEK_CUR)
 	if err != nil {
 		return err
@@ -94,6 +107,11 @@ func (vol *Volume) GetNeedle(key uint64, cookie uint32) (*Needle, error) {
 	}
 	vol.fileLock.RLock()
 	defer vol.fileLock.RUnlock()
+	if vol.isCleaning {
+		// I think it's also necessary to handle GetNeedle
+		// during cleaning
+		return vol.volTmp.GetNeedle(key, cookie)
+	}
 	needleBytes := make([]byte, fullsize)
 	readSize, err := vol.StoreFile.ReadAt(needleBytes, int64(offset))
 	if err != nil {
@@ -144,7 +162,11 @@ func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
 		return err
 	}
 	if float32(deletedSize)/float32(fi.Size()) > vol.garbageThreshold {
-		go func() { cleaner.cleanIDChan <- vol.ID }()
+		go func() {
+			if err := vol.cleanNeedles(); err != nil {
+				log.Errorln(err)
+			}
+		}()
 	}
 	return vol.mapping.Del(key, cookie)
 }
@@ -169,4 +191,71 @@ func (vol *Volume) increaseDeletedSize(size uint64) (deletedSize uint64, err err
 		return 0, err
 	}
 	return
+}
+
+func (vol *Volume) cleanNeedles() error {
+	log.Infoln(0, "volume%d is cleaning", vol.ID)
+	newStoreFileName := vol.StoreFile.Name() + ".tmp"
+	newStoreFile, err := os.OpenFile(newStoreFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	newMappingName := vol.mappingName + "_tmp"
+	newMapping, err := NewLevelDBMapping(newMappingName) // TODO: this needs to be changed
+	if err != nil {
+		return err
+	}
+	vol.volTmp = &Volume{
+		StoreFile: newStoreFile,
+		mapping:   newMapping,
+	}
+	vol.isCleaning = true
+	err = vol.mapping.Iter(func(key uint64, cookie uint32) error {
+		n, err := vol.GetNeedle(key, cookie)
+		if err != nil {
+			return err
+		}
+		return vol.volTmp.AppendNeedle(n)
+	})
+	if err != nil {
+		return err
+	}
+	oldFileInfo, err := vol.StoreFile.Stat() // save old StoreFile Info
+	if err != nil {
+		return err
+	}
+
+	vol.fileLock.Lock()
+	defer func() {
+		vol.isCleaning = false
+		vol.volTmp = nil
+		vol.fileLock.Unlock()
+	}()
+	// Switch StoreFile
+	if err = os.RemoveAll(vol.StoreFile.Name()); err != nil { // remove the old StoreFIle
+		return err
+	}
+	if err = newStoreFile.Sync(); err != nil {
+		return err
+	}
+	if err = newStoreFile.Close(); err != nil { // save the new StoreFile to disk
+		return err
+	}
+	// remove the ".tmp" in newStoreFile
+	if err = os.Rename(newStoreFileName, newStoreFileName[:len(newStoreFileName)-4]); err != nil {
+		return err
+	}
+	vol.StoreFile, err = os.OpenFile(newStoreFileName[:len(newStoreFileName)-4], os.O_RDWR, oldFileInfo.Mode())
+	if err != nil {
+		return err
+	}
+	// Switch Mapping
+	if err = os.RemoveAll(vol.mappingName); err != nil {
+		return err
+	}
+	if err = os.Rename(newMappingName, vol.mappingName); err != nil {
+		return err
+	}
+	vol.mapping, err = NewLevelDBMapping(vol.mappingName)
+	return err
 }

@@ -43,3 +43,14 @@ func (m *Mapping) Del(key uint64, cookie uint32) error {
 	UInt32ToBytes(keyBytes[8:12], cookie)
 	return m.kvstore.Delete(keyBytes)
 }
+
+func (m *Mapping) Iter(mapIterFunc func(key uint64, cookie uint32) error) error {
+	return m.kvstore.Iter(func(keyBytes []byte) error {
+		if string(keyBytes) == KeyDeletedSize {
+			return nil
+		}
+		key := BytesToUInt64(keyBytes[0:8])
+		cookie := BytesToUInt32(keyBytes[8:12])
+		return mapIterFunc(key, cookie)
+	})
+}
