@@ -2,7 +2,7 @@ package helper
 
 import "os"
 
-func DirRemover(dirs ...string) {
+func RemoveDirs(dirs ...string) {
 	for _, dir := range dirs {
 		os.RemoveAll(dir)
 	}

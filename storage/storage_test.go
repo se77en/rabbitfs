@@ -8,29 +8,36 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/lilwulin/rabbitfs/helper"
 	"github.com/visionmedia/go-bench"
 )
 
 var (
-	inputPath  string
-	outputPath string
-	pic1Name   string
-	pic2Name   string
+	inputPath         string
+	outputPath        string
+	outputDeletedPath string
+	pic1Name          string
+	pic2Name          string
 )
 
 func init() {
 	inputPath = "./testData/input"
 	outputPath = "./testData/output"
+	outputDeletedPath = "./testData/output-after-deleted"
 	pic1Name = "Massimo.jpg"
 	pic2Name = "panda.jpg"
 }
 
-func TestBehavior(t *testing.T) {
-	fmt.Println("TESTING BEHAVIOR")
+func printTestInfo(head string) {
+	fmt.Println(head)
 	fmt.Println("======================")
-	defer helper.DirRemover("./testData/data", "./test_mapping")
+}
+
+func TestBehavior(t *testing.T) {
+	printTestInfo("TESTING BEHAVIOR")
+	defer helper.RemoveDirs("./testData/data", "./test_mapping")
 
 	testKey1 := 0
 	testCookie1 := rand.Uint32()
@@ -112,11 +119,39 @@ func TestBehavior(t *testing.T) {
 	if err = ioutil.WriteFile(path.Join(outputPath, string(n2O.Name)), f2DataO, 0777); err != nil {
 		t.Error(err)
 	}
+
+	fmt.Println("Delete Needle 1")
+	oldFileInfo, _ := vol.StoreFile.Stat()
+	fmt.Println("the old StoreFile size is ", oldFileInfo.Size())
+	if err := vol.DelNeedle(uint64(testKey1), testCookie1); err != nil {
+		t.Error(err)
+	}
+	_, err = vol.GetNeedle(uint64(testKey1), testCookie1)
+	if err == nil {
+		t.Error("expect error, but got nil")
+	} else {
+		fmt.Println(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	newFileInfo, _ := vol.StoreFile.Stat()
+	fmt.Println("the new StoreFile size is ", newFileInfo.Size())
+	if oldFileInfo.Size() <= newFileInfo.Size() {
+		t.Errorf("expect old StoreFile size to be bigger than new StoreFile size, but got old size:%d, new size:%d\n",
+			oldFileInfo.Size(), newFileInfo.Size())
+	}
+	fmt.Println("Get Needle 2")
+	if n2O, err = vol.GetNeedle(uint64(testKey2), testCookie2); err != nil {
+		t.Error(err)
+	}
+	fmt.Println("Write images to output-after-deleted")
+	f2DataO = n2O.Data
+	if err = ioutil.WriteFile(path.Join(outputDeletedPath, string(n2O.Name)), f2DataO, 0777); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestNameTooLong(t *testing.T) {
-	fmt.Println("TESTING NAME TOO LONG")
-	fmt.Println("======================")
+	printTestInfo("TESTING NAME TOO LONG")
 	cookie := 1
 	key := 1
 	data := []byte(string("hey"))
@@ -135,8 +170,7 @@ func TestNameTooLong(t *testing.T) {
 }
 
 func BenchmarkWriteAndRead(b *testing.B) {
-	fmt.Println("BENCHMARKING")
-	fmt.Println("======================")
+	printTestInfo("BENCHMARKING")
 	vol, f1DataI := getVolAndData()
 	ops := 5000
 	ben := bench.Start("Append-Needles-5000")
@@ -144,7 +178,7 @@ func BenchmarkWriteAndRead(b *testing.B) {
 		vol.AppendNeedle(NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name)))
 	}
 	ben.End(ops)
-	helper.DirRemover("./testData/data", "./test_mapping")
+	helper.RemoveDirs("./testData/data", "./test_mapping")
 
 	vol, f1DataI = getVolAndData()
 	ops = 10000
@@ -153,7 +187,7 @@ func BenchmarkWriteAndRead(b *testing.B) {
 		vol.AppendNeedle(NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name)))
 	}
 	ben.End(ops)
-	helper.DirRemover("./testData/data", "./test_mapping")
+	helper.RemoveDirs("./testData/data", "./test_mapping")
 
 	vol, f1DataI = getVolAndData()
 	ops = 20000
@@ -183,7 +217,7 @@ func BenchmarkWriteAndRead(b *testing.B) {
 		_, _ = vol.GetNeedle(uint64(i), uint32(i))
 	}
 	ben.End(ops)
-	helper.DirRemover("./testData/data", "./test_mapping")
+	helper.RemoveDirs("./testData/data", "./test_mapping")
 }
 
 func getVolAndData() (*Volume, []byte) {
