@@ -27,6 +27,7 @@ type Volume struct {
 	isCleaning       bool
 }
 
+// NewVolume returns a new *Volume and an error
 func NewVolume(id uint32, storeFile *os.File, mapFilePath string, threshold float32) (*Volume, error) {
 	m, err := NewLevelDBMapping(mapFilePath) // TODO: this needs to be changed
 	if err != nil {

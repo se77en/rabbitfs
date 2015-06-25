@@ -112,9 +112,14 @@ func NewRaftkv(
 	return rkv, nil
 }
 
-// GetServer returns the server
-func (rkv *Raftkv) GetServer() *raft.Server {
-	return &rkv.server
+// Leader returns the server's leader
+func (rkv *Raftkv) Leader() string {
+	return rkv.server.Leader()
+}
+
+// Name returns the server's name
+func (rkv *Raftkv) Name() string {
+	return rkv.server.Name()
 }
 
 // Join an existing cluster
@@ -227,11 +232,13 @@ func (rkv *Raftkv) redirectedPut(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println("incoming putcommand: ", command)
-	if _, err := rkv.server.Do(command); err != nil {
+	// the Do(Command) function is too slow,
+	// so I have to use goroutine
+	if err := rkv.kvs.Put(command.Key, command.Val); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	go rkv.server.Do(command)
 }
 
 func (rkv *Raftkv) redirectedDel(w http.ResponseWriter, req *http.Request) {
@@ -240,11 +247,11 @@ func (rkv *Raftkv) redirectedDel(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println("incoming delcommand: ", command)
-	if _, err := rkv.server.Do(command); err != nil {
+	if err := rkv.kvs.Delete(command.Key); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	go rkv.server.Do(command)
 }
 
 func (rkv *Raftkv) redirectedGet(w http.ResponseWriter, req *http.Request) {
@@ -253,7 +260,7 @@ func (rkv *Raftkv) redirectedGet(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	logger.Println("incoming getcommand: ", command)
+	// logger.Println("incoming getcommand: ", command)
 	val, err := rkv.kvs.Get(command.Key)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -281,35 +288,20 @@ func (rkv *Raftkv) redirectToLeader(leader string, op string, command raft.Comma
 // Get gets a value by key
 func (rkv *Raftkv) Get(key []byte) ([]byte, error) {
 	getCmd := newGetCommand(key)
-	val, err := rkv.server.Do(getCmd)
-	if err == raft.NotLeaderError {
-		return rkv.redirectToLeader(rkv.server.Leader(), "raftkv_get", getCmd)
-	}
-	if val != nil {
-		return val.([]byte), err
-	}
-	return nil, err
+	return rkv.redirectToLeader(rkv.server.Leader(), "raftkv_get", getCmd)
 }
 
 // Put puts a key-value pair, it overwrites the old one.
 func (rkv *Raftkv) Put(key, val []byte) error {
 	putCmd := newPutCommand(key, val)
-	_, err := rkv.server.Do(putCmd)
-	if err == raft.NotLeaderError {
-		_, err = rkv.redirectToLeader(rkv.server.Leader(), "raftkv_put", putCmd)
-		return err
-	}
+	_, err := rkv.redirectToLeader(rkv.server.Leader(), "raftkv_put", putCmd)
 	return err
 }
 
 // Del deletes a key-value pair
 func (rkv *Raftkv) Del(key []byte) error {
 	delCmd := newDelCommand(key)
-	_, err := rkv.server.Do(delCmd)
-	if err == raft.NotLeaderError {
-		_, err = rkv.redirectToLeader(rkv.server.Leader(), "raftkv_del", delCmd)
-		return err
-	}
+	_, err := rkv.redirectToLeader(rkv.server.Leader(), "raftkv_del", delCmd)
 	return err
 }
 

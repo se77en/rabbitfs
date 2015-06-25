@@ -3,6 +3,7 @@ package raftkv
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -162,7 +163,7 @@ func BenchmarkLevelDBKV(b *testing.B) {
 	kv2, _ := NewLevelDB("./leveldb2")
 	kv3, _ := NewLevelDB("./leveldb3")
 
-	_, _ = NewRaftkv(
+	rkv1, _ := NewRaftkv(
 		testPeers,
 		kv1,
 		"./raft1",
@@ -172,6 +173,8 @@ func BenchmarkLevelDBKV(b *testing.B) {
 		500*time.Millisecond,
 		0,
 	)
+	go rkv1.ListenAndServe()
+	time.Sleep(300 * time.Millisecond)
 
 	rkv2, _ := NewRaftkv(
 		testPeers,
@@ -183,8 +186,10 @@ func BenchmarkLevelDBKV(b *testing.B) {
 		500*time.Millisecond,
 		0,
 	)
+	go rkv2.ListenAndServe()
+	time.Sleep(150 * time.Millisecond)
 
-	_, _ = NewRaftkv(
+	rkv3, _ := NewRaftkv(
 		testPeers,
 		kv3,
 		"./raft3",
@@ -194,43 +199,16 @@ func BenchmarkLevelDBKV(b *testing.B) {
 		500*time.Millisecond,
 		0,
 	)
+	go rkv3.ListenAndServe()
+	time.Sleep(200 * time.Millisecond)
 
-	ops := 1000
+	ops := 10000
 	ben := bench.Start("RAFTKV-PUT")
 	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", rand.Uint32())))
 	}
 	ben.End(ops)
 
-	ops = 5000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 10000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 50000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 100000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 100000
 	ben = bench.Start("RAFTKV-GET")
 	for i := 0; i < ops; i++ {
 		_, _ = rkv2.Get([]byte(fmt.Sprintf("%d", i)))
@@ -253,16 +231,18 @@ func BenchmarkMemKV(b *testing.B) {
 	kv2 := NewMem()
 	kv3 := NewMem()
 
-	_, _ = NewRaftkv(
+	rkv1, _ := NewRaftkv(
 		testPeers,
 		kv1,
 		"./raft1",
 		"http://127.0.0.1",
 		8787,
 		"/raft",
-		500*time.Millisecond,
+		100*time.Millisecond,
 		0,
 	)
+	go rkv1.ListenAndServe()
+	time.Sleep(300 * time.Millisecond)
 
 	rkv2, _ := NewRaftkv(
 		testPeers,
@@ -271,57 +251,32 @@ func BenchmarkMemKV(b *testing.B) {
 		"http://127.0.0.1",
 		8788,
 		"/raft",
-		500*time.Millisecond,
+		100*time.Millisecond,
 		0,
 	)
+	go rkv2.ListenAndServe()
+	time.Sleep(150 * time.Millisecond)
 
-	_, _ = NewRaftkv(
+	rkv3, _ := NewRaftkv(
 		testPeers,
 		kv3,
 		"./raft3",
 		"http://127.0.0.1",
 		8789,
 		"/raft",
-		500*time.Millisecond,
+		100*time.Millisecond,
 		0,
 	)
+	go rkv3.ListenAndServe()
+	time.Sleep(200 * time.Millisecond)
 
-	ops := 1000
+	ops := 10000
 	ben := bench.Start("RAFTKV-PUT")
 	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", rand.Uint32())))
 	}
 	ben.End(ops)
 
-	ops = 5000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 10000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 50000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 100000
-	ben = bench.Start("RAFTKV-PUT")
-	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
-	}
-	ben.End(ops)
-
-	ops = 100000
 	ben = bench.Start("RAFTKV-GET")
 	for i := 0; i < ops; i++ {
 		_, _ = rkv2.Get([]byte(fmt.Sprintf("%d", i)))

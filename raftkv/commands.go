@@ -29,6 +29,9 @@ func (pcmd *putCommand) CommandName() string {
 // Apply implements goraft Command interface's Apply function
 // It puts a key-value pair in KVstore
 func (pcmd *putCommand) Apply(server raft.Server) (interface{}, error) {
+	if server.Name() == server.Leader() {
+		return nil, nil
+	}
 	kvs := server.Context().(KVstore)
 	err := kvs.Put(pcmd.Key, pcmd.Val)
 	return nil, err
@@ -49,6 +52,9 @@ func (dcmd *delCommand) CommandName() string {
 }
 
 func (dcmd *delCommand) Apply(server raft.Server) (interface{}, error) {
+	if server.Name() == server.Leader() {
+		return nil, nil
+	}
 	kvs := server.Context().(KVstore)
 	err := kvs.Delete(dcmd.Key)
 	return nil, err
@@ -69,6 +75,5 @@ func (gcmd *getCommand) CommandName() string {
 }
 
 func (gcmd *getCommand) Apply(server raft.Server) (interface{}, error) {
-	kvs := server.Context().(KVstore)
-	return kvs.Get(gcmd.Key)
+	return nil, nil
 }

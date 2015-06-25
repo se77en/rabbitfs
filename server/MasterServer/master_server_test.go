@@ -1,4 +1,4 @@
-package master_server
+package MasterServer
 
 import "testing"
 
