@@ -112,6 +112,11 @@ func NewRaftkv(
 	return rkv, nil
 }
 
+// GetServer returns the server
+func (rkv *Raftkv) GetServer() *raft.Server {
+	return &rkv.server
+}
+
 // Join an existing cluster
 func (rkv *Raftkv) Join(peers []string) (e error) {
 	command := &raft.DefaultJoinCommand{

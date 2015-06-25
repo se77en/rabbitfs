@@ -20,7 +20,7 @@ var testPeers = []string{
 }
 
 func TestMultiRaftkv(t *testing.T) {
-	defer helper.DirRemover(
+	defer helper.RemoveDirs(
 		"./raft1", "./leveldb1",
 		"./raft2", "./leveldb2",
 		"./raft3", "./leveldb3",
@@ -146,8 +146,8 @@ func TestMultiRaftkv(t *testing.T) {
 	time.Sleep(1 * time.Second)
 }
 
-func BenchmarkPut(b *testing.B) {
-	defer helper.DirRemover(
+func BenchmarkLevelDBKV(b *testing.B) {
+	defer helper.RemoveDirs(
 		"./raft1", "./leveldb1",
 		"./raft2", "./leveldb2",
 		"./raft3", "./leveldb3",
@@ -161,6 +161,97 @@ func BenchmarkPut(b *testing.B) {
 	kv1, _ := NewLevelDB("./leveldb1")
 	kv2, _ := NewLevelDB("./leveldb2")
 	kv3, _ := NewLevelDB("./leveldb3")
+
+	_, _ = NewRaftkv(
+		testPeers,
+		kv1,
+		"./raft1",
+		"http://127.0.0.1",
+		8787,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+
+	rkv2, _ := NewRaftkv(
+		testPeers,
+		kv2,
+		"./raft2",
+		"http://127.0.0.1",
+		8788,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+
+	_, _ = NewRaftkv(
+		testPeers,
+		kv3,
+		"./raft3",
+		"http://127.0.0.1",
+		8789,
+		"/raft",
+		500*time.Millisecond,
+		0,
+	)
+
+	ops := 1000
+	ben := bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 5000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 10000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 50000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 100000
+	ben = bench.Start("RAFTKV-PUT")
+	for i := 0; i < ops; i++ {
+		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+
+	ops = 100000
+	ben = bench.Start("RAFTKV-GET")
+	for i := 0; i < ops; i++ {
+		_, _ = rkv2.Get([]byte(fmt.Sprintf("%d", i)))
+	}
+	ben.End(ops)
+}
+
+func BenchmarkMemKV(b *testing.B) {
+	defer helper.RemoveDirs(
+		"./raft1",
+		"./raft2",
+		"./raft3",
+	)
+	os.Mkdir("./raft1", 0700)
+	os.Mkdir("./raft2", 0700)
+	os.Mkdir("./raft3", 0700)
+	fmt.Println("testing multi raftkv")
+	// creating new leveldb kvstore
+	kv1 := NewMem()
+	kv2 := NewMem()
+	kv3 := NewMem()
 
 	_, _ = NewRaftkv(
 		testPeers,
