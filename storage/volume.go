@@ -42,7 +42,6 @@ func NewVolume(id uint32, storeFile *os.File, mapFilePath string, threshold floa
 		readOnly:         false,
 		isCleaning:       false,
 	}
-	// cleaner.newVolumeChan <- v
 	return v, nil
 }
 
