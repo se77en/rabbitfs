@@ -72,6 +72,7 @@ func (ss *StoreServer) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	if contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}
+	// TODO: Add ETAG
 	w.Header().Set("Content-Disposition", fmt.Sprintf("filename=\"%s\"", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(n.Data)))
 	_, err = w.Write(n.Data)

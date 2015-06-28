@@ -1,7 +1,6 @@
 package raftkv
 
 import (
-	"bytes"
 	"fmt"
 	"math/rand"
 	"os"
@@ -85,41 +84,6 @@ func TestMultiRaftkv(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	if err = rkv2.Put([]byte("test_key1"), []byte("test_val1")); err != nil {
-		t.Error(err)
-	}
-	if err = rkv3.Put([]byte("test_key2"), []byte("test_val3")); err != nil {
-		t.Error(err)
-	}
-	// rkv1 Get
-	val, err := rkv1.Get([]byte("test_key1"))
-	if err != nil {
-		t.Error(err.Error())
-	}
-	if !bytes.Equal(val, []byte("test_val1")) {
-		t.Errorf("expected %s, get %s", []byte("test_val1"), val)
-	}
-
-	// rkv3 Get
-	val, err = rkv3.Get([]byte("test_key1"))
-	if err != nil {
-		t.Error(err.Error())
-	}
-	if !bytes.Equal(val, []byte("test_val1")) {
-		t.Errorf("expected %s, get %s", []byte("test_val1"), val)
-	}
-
-	if err = rkv3.Del([]byte("test_key2")); err != nil {
-		t.Error(err)
-	}
-
-	if v, err := rkv2.Get([]byte("test_key2")); err == nil {
-		logger.Println(v)
-		t.Error("Error should not be nil")
-	} else {
-		logger.Println("expected error: ", err)
-	}
-
 	// Test Join cluster
 	kv4, _ := NewLevelDB("./leveldb4")
 	rkv4, err := NewRaftkv(
@@ -138,11 +102,6 @@ func TestMultiRaftkv(t *testing.T) {
 	go rkv4.ListenAndServe()
 	rkv4.Join(testPeers)
 	time.Sleep(1000 * time.Millisecond)
-	if val, err = rkv4.Get([]byte("test_key1")); err != nil {
-		t.Error(err)
-	} else {
-		logger.Println("get val from rkv4: ", string(val))
-	}
 	rkv4.Leave()
 	time.Sleep(1 * time.Second)
 }
@@ -270,10 +229,14 @@ func BenchmarkMemKV(b *testing.B) {
 	go rkv3.ListenAndServe()
 	time.Sleep(200 * time.Millisecond)
 
-	ops := 10000
+	ops := 300
 	ben := bench.Start("RAFTKV-PUT")
 	for i := 0; i < ops; i++ {
-		_ = rkv2.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", rand.Uint32())))
+		err := rkv1.Put([]byte(fmt.Sprintf("%d", i)), []byte(fmt.Sprintf("%d", rand.Uint32())))
+		if err != nil {
+			b.Error(err)
+			return
+		}
 	}
 	ben.End(ops)
 

@@ -1,6 +1,10 @@
 package raftkv
 
-import "github.com/goraft/raft"
+import (
+	"fmt"
+
+	"github.com/goraft/raft"
+)
 
 func init() {
 	raft.RegisterCommand(&putCommand{})
@@ -29,6 +33,7 @@ func (pcmd *putCommand) CommandName() string {
 // Apply implements goraft Command interface's Apply function
 // It puts a key-value pair in KVstore
 func (pcmd *putCommand) Apply(server raft.Server) (interface{}, error) {
+	fmt.Println("apply put: ", server.Name())
 	if server.Name() == server.Leader() {
 		return nil, nil
 	}

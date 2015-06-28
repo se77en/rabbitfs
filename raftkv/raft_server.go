@@ -238,7 +238,7 @@ func (rkv *Raftkv) redirectedPut(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	go rkv.server.Do(command)
+	rkv.server.Do(command)
 }
 
 func (rkv *Raftkv) redirectedDel(w http.ResponseWriter, req *http.Request) {
@@ -294,7 +294,8 @@ func (rkv *Raftkv) Get(key []byte) ([]byte, error) {
 // Put puts a key-value pair, it overwrites the old one.
 func (rkv *Raftkv) Put(key, val []byte) error {
 	putCmd := newPutCommand(key, val)
-	_, err := rkv.redirectToLeader(rkv.server.Leader(), "raftkv_put", putCmd)
+	// _, err := rkv.redirectToLeader(rkv.server.Leader(), "raftkv_put", putCmd)
+	_, err := rkv.server.Do(putCmd)
 	return err
 }
 
