@@ -89,14 +89,11 @@ func (ss *StoreServer) uploadHandler(w http.ResponseWriter, r *http.Request) {
 func replicateUpload(url string, filename string, data []byte) error {
 	var b bytes.Buffer
 	mw := multipart.NewWriter(&b)
-	fmt.Println(filename)
 	f, _ := mw.CreateFormFile("replicate", filename)
-	written, err := f.Write(data)
+	_, err := f.Write(data)
 	if err != nil {
 		return err
 	}
-	fmt.Println("written: ", written)
-	fmt.Println(len(b.Bytes()))
 	mw.Close()
 	_, err = postAndError(url, mw.FormDataContentType(), &b)
 	return err
@@ -121,6 +118,24 @@ func (ss *StoreServer) replicateUploadHandler(w http.ResponseWriter, r *http.Req
 	}
 	n := storage.NewNeedle(cookie, needleID, data, name)
 	if err = ss.volumeMap[volID].AppendNeedle(n); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (ss *StoreServer) deleteFileHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	fileIDStr := vars["fileID"]
+	volID, needleID, cookie, err := newFileID(fileIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if ss.volumeMap[volID] == nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err = ss.volumeMap[volID].DelNeedle(needleID, cookie); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -81,8 +81,7 @@ func NewRaftServer(
 	}
 
 	rs.router.HandleFunc("/raft_server/join", rs.joinHandler)
-
-	if len(rs.peers) > 0 {
+	if len(rs.peers) > 1 {
 		// fmt.Println(peers)
 		err := rs.Join(rs.peers)
 		if err != nil {
@@ -96,8 +95,8 @@ func NewRaftServer(
 				return nil, err
 			}
 		}
-	} else if rs.Server.IsLogEmpty() {
-		// Initialize the server by joining itself
+	} else {
+		// server joining itself
 		_, err = rs.Server.Do(&raft.DefaultJoinCommand{
 			Name:             rs.Server.Name(),
 			ConnectionString: Addr,
@@ -140,7 +139,7 @@ func (rs *RaftServer) Join(peers []string) (e error) {
 		target := fmt.Sprintf("%s/raft_server/join", peer)
 		_, err := postAndError(target, "application/json", &b)
 		if err != nil {
-			fmt.Println(err)
+			log4go.Warn(err.Error())
 			e = err
 			continue
 		} else {

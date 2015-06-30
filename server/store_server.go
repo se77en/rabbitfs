@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"code.google.com/p/log4go"
+
 	"github.com/gorilla/mux"
 	"github.com/lilwulin/rabbitfs/storage"
 )
@@ -79,12 +81,14 @@ func NewStoreServer(
 	ss.router.HandleFunc("/{fileID}", ss.uploadHandler).Methods("POST")
 	ss.router.HandleFunc("/{fileID}", ss.getFileHandler).Methods("GET")
 	ss.router.HandleFunc("/replicate/{fileID}", ss.replicateUploadHandler).Methods("POST")
+	ss.router.HandleFunc("/del/{fileID}", ss.deleteFileHandler)
 	ss.router.HandleFunc("/vol/create", ss.createVolumeHandler).Methods("POST")
 	ss.router.HandleFunc("/store/stat", ss.getStatHandler)
 	return
 }
 
 func (ss *StoreServer) ListenAndServe() {
+	log4go.Info("store server start listening on: %s", ss.Addr)
 	s := &http.Server{
 		Addr:         ss.Addr,
 		Handler:      ss.router,

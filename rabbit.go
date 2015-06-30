@@ -2,13 +2,15 @@ package main
 
 import (
 	"flag"
+	"fmt"
 
-	"github.com/lilwulin/rabbitfs/log"
+	"code.google.com/p/log4go"
+	"github.com/lilwulin/rabbitfs/commandline"
 )
 
-var commands = []*command{
-	masterCommand,
-}
+// var commands = []*command{
+// 	masterCommand,
+// }
 
 func main() {
 	flag.Parse()
@@ -18,20 +20,24 @@ func main() {
 		return
 	}
 
-	for _, c := range commands {
-		if args[0] == c.name {
-			if err := c.flag.Parse(args[1:]); err != nil {
-				log.Fatalf("parse flag %s error", args[1:])
+	for _, c := range commandline.Commands {
+		if args[0] == c.Name {
+			if err := c.Flag.Parse(args[1:]); err != nil {
+				log4go.Error("parse flag %s error", args[1:])
+				return
 			}
-			c.run()
+			args = c.Flag.Args()
+			if err := c.Run(args); err != nil {
+				fmt.Println(err.Error())
+			}
 			return
 		}
 	}
 
-	log.Errorf("command %s not found\n", args[0])
+	// log.Errorf("command %s not found\n", args[0])
 	printUsage()
 }
 
 func printUsage() {
-	// TODO: fill this function to print usage for users
+	fmt.Printf("command:\n	rabbitfs directory\n	rabbitfs store\n")
 }

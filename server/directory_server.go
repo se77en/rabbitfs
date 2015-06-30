@@ -62,7 +62,6 @@ type configuration struct {
 func NewDirectory(
 	confPath string,
 	Addr string,
-	raftPath string,
 	pulse time.Duration,
 	volumeMaxSize int64,
 	serverTimeout time.Duration,
@@ -133,7 +132,6 @@ func (dir *Directory) proxyToLeader(f func(w http.ResponseWriter, r *http.Reques
 		if dir.raftServer.Leader() == dir.raftServer.Name() {
 			f(w, r)
 		} else {
-			fmt.Println("not leader replication: ", r.FormValue("replication"))
 			targetURL, err := url.Parse(dir.raftServer.Leader())
 			if err != nil {
 				helper.WriteJson(w, err.Error(), http.StatusInternalServerError)
