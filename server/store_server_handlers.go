@@ -1,18 +1,22 @@
-package StoreServer
+package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"code.google.com/p/log4go"
+
 	"github.com/gorilla/mux"
 	"github.com/lilwulin/rabbitfs/helper"
-	"github.com/lilwulin/rabbitfs/log"
 	"github.com/lilwulin/rabbitfs/storage"
 )
 
@@ -30,6 +34,10 @@ func (ss *StoreServer) uploadHandler(w http.ResponseWriter, r *http.Request) {
 		helper.WriteJson(w, result{Error: err.Error()}, http.StatusInternalServerError)
 		return
 	}
+	if ss.volumeMap[volID] == nil {
+		helper.WriteJson(w, result{Error: fmt.Sprintf("no volume %d", volID)}, http.StatusInternalServerError)
+		return
+	}
 	data, name, err := parseUpload(r)
 	if err != nil {
 		helper.WriteJson(w, result{Error: err.Error()}, http.StatusInternalServerError)
@@ -40,11 +48,82 @@ func (ss *StoreServer) uploadHandler(w http.ResponseWriter, r *http.Request) {
 		helper.WriteJson(w, result{Error: err.Error()}, http.StatusInternalServerError)
 		return
 	}
+
+	fi, _ := ss.volumeMap[volID].StoreFile.Stat()
+	vi := volumeInfo{
+		ID:   volID,
+		Size: fi.Size(),
+	}
+	viBytes, _ := json.Marshal(vi)
+	for i := range ss.conf.Directories { // send volume information to directory server
+		var b bytes.Buffer
+		b.Write(viBytes)
+		_, err := postAndError("http://"+ss.conf.Directories[i]+"/vol/info", "application/json", &b)
+		if err == nil {
+			break
+		} else {
+			log4go.Warn("send volumeInfo to directory get err: %s", err.Error())
+		}
+	}
+	for _, localVolIDIP := range ss.localVolIDIPs {
+		if localVolIDIP.ID == volID {
+			for _, ip := range localVolIDIP.IP {
+				if ip != ss.Addr {
+					if err = replicateUpload(fmt.Sprintf("http://%s/replicate/%s", ip, fileIDStr), string(name), data); err != nil {
+						helper.WriteJson(w, result{Error: err.Error()}, http.StatusInternalServerError)
+						return
+					}
+				}
+			}
+			break
+		}
+	}
 	res := result{
 		Name: string(name),
 		Size: len(data),
 	}
 	helper.WriteJson(w, res, http.StatusOK)
+
+}
+
+func replicateUpload(url string, filename string, data []byte) error {
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	fmt.Println(filename)
+	f, _ := mw.CreateFormFile("replicate", filename)
+	written, err := f.Write(data)
+	if err != nil {
+		return err
+	}
+	fmt.Println("written: ", written)
+	fmt.Println(len(b.Bytes()))
+	mw.Close()
+	_, err = postAndError(url, mw.FormDataContentType(), &b)
+	return err
+}
+
+func (ss *StoreServer) replicateUploadHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	fileIDStr := vars["fileID"]
+	volID, needleID, cookie, err := newFileID(fileIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if ss.volumeMap[volID] == nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data, name, err := parseUpload(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	n := storage.NewNeedle(cookie, needleID, data, name)
+	if err = ss.volumeMap[volID].AppendNeedle(n); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (ss *StoreServer) getFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +134,10 @@ func (ss *StoreServer) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	volID, needleID, cookie, err := newFileID(fileIDStr)
 	if err != nil {
 		helper.WriteJson(w, result{Error: err.Error()}, http.StatusInternalServerError)
+		return
+	}
+	if ss.volumeMap[volID] == nil {
+		helper.WriteJson(w, result{Error: fmt.Sprintf("no volume %d", volID)}, http.StatusInternalServerError)
 		return
 	}
 	n, err := ss.volumeMap[volID].GetNeedle(needleID, cookie)
@@ -77,31 +160,57 @@ func (ss *StoreServer) getFileHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(n.Data)))
 	_, err = w.Write(n.Data)
 	if err != nil {
-		log.Errorln(err)
+		log4go.Error(err.Error())
 	}
 }
 
 func (ss *StoreServer) createVolumeHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	volIDStr := vars["volID"]
-	volID, err := newVolumeID(volIDStr)
+	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var volIDIP VolumeIDIP
+	if err = json.Unmarshal(body, &volIDIP); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	id := volIDIP.ID
+	volIDStr := fmt.Sprintf("%d", id)
 	volPath := filepath.Join(ss.volumeDir, volIDStr+".vol")
-	needleMapPath := filepath.Join(ss.volumeDir, fmt.Sprintf("needle_map_vol%d", volID))
+	needleMapPath := filepath.Join(ss.volumeDir, fmt.Sprintf("needle_map_vol%d", id))
 	file, err := os.OpenFile(volPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	v, err := storage.NewVolume(volID, file, needleMapPath, ss.garbageThreshold)
+	v, err := storage.NewVolume(id, file, needleMapPath, ss.garbageThreshold)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	ss.volumeMap[volID] = v
+	ss.localVolIDIPs = append(ss.localVolIDIPs, volIDIP)
+	bytes, err := json.Marshal(ss.localVolIDIPs)
+	if err = ioutil.WriteFile(filepath.Join(ss.volumeDir, "volIDIPs.json"), bytes, 0644); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	ss.volumeMap[id] = v
+}
+
+func (ss *StoreServer) getStatHandler(w http.ResponseWriter, r *http.Request) {
+	volsInfo := []volumeInfo{}
+	for volID, vol := range ss.volumeMap {
+		fi, _ := vol.StoreFile.Stat()
+		fileSize := fi.Size()
+		volsInfo = append(volsInfo, volumeInfo{ID: volID, Size: fileSize})
+	}
+	stat := storeStat{
+		IsAlive:   true,
+		VolsCount: uint32(len(ss.localVolIDIPs)),
+		VolsInfo:  volsInfo,
+	}
+	bytes, _ := json.Marshal(stat)
+	w.Write(bytes)
 }
 
 func newVolumeID(volIDStr string) (uint32, error) {

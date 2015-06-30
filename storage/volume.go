@@ -6,7 +6,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/lilwulin/rabbitfs/log"
+	"code.google.com/p/log4go"
+
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -25,6 +26,7 @@ type Volume struct {
 	readOnly         bool
 	volTmp           *Volume
 	isCleaning       bool
+	isTmp            bool
 }
 
 // NewVolume returns a new *Volume and an error
@@ -41,6 +43,7 @@ func NewVolume(id uint32, storeFile *os.File, mapFilePath string, threshold floa
 		garbageThreshold: threshold,
 		readOnly:         false,
 		isCleaning:       false,
+		isTmp:            false,
 	}
 	return v, nil
 }
@@ -49,6 +52,10 @@ func NewVolume(id uint32, storeFile *os.File, mapFilePath string, threshold floa
 func (vol *Volume) AppendNeedle(n *Needle) error {
 	if vol.readOnly {
 		return fmt.Errorf("volume %d is read-only", vol.ID)
+	}
+	if _, _, err := vol.mapping.Get(n.Key, n.Cookie); err != leveldb.ErrNotFound &&
+		!vol.isTmp {
+		return errors.New("file exists")
 	}
 	vol.fileLock.Lock()
 	defer vol.fileLock.Unlock()
@@ -162,7 +169,7 @@ func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
 	if float32(deletedSize)/float32(fi.Size()) > vol.garbageThreshold {
 		go func() {
 			if err := vol.cleanNeedles(); err != nil {
-				log.Errorln(err)
+				log4go.Error(err.Error())
 			}
 		}()
 	}
@@ -192,7 +199,7 @@ func (vol *Volume) increaseDeletedSize(size uint64) (deletedSize uint64, err err
 }
 
 func (vol *Volume) cleanNeedles() error {
-	log.Infof(0, "volume%d is cleaning\n", vol.ID)
+	log4go.Info("volume%d is cleaning", vol.ID)
 	tmpStoreFileName := vol.StoreFile.Name() + ".tmp"
 	tmpStoreFile, err := os.OpenFile(tmpStoreFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
@@ -204,6 +211,7 @@ func (vol *Volume) cleanNeedles() error {
 	vol.volTmp = &Volume{
 		StoreFile: tmpStoreFile,
 		mapping:   vol.mapping,
+		isTmp:     true,
 	}
 	vol.isCleaning = true
 	// iterate the mapping, get the undeleted needles,
@@ -231,6 +239,7 @@ func (vol *Volume) cleanNeedles() error {
 		vol.isCleaning = false
 		vol.volTmp = nil
 		vol.fileLock.Unlock()
+		vol.readOnly = false
 	}()
 	// Switch StoreFile
 	vol.StoreFile.Close()

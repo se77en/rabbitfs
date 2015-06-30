@@ -1,6 +1,7 @@
-package StoreServer
+package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/lilwulin/rabbitfs/log"
 	"github.com/lilwulin/rabbitfs/storage"
 )
 
@@ -21,9 +21,12 @@ type StoreServer struct {
 	volumeDir        string
 	Addr             string
 	timeout          time.Duration
+	localVolIDIPs    []VolumeIDIP
+	conf             configuration
 }
 
 func NewStoreServer(
+	confPath string,
 	volumeDir string,
 	garbageThreshold float32,
 	Addr string,
@@ -37,12 +40,47 @@ func NewStoreServer(
 		Addr:             Addr,
 		timeout:          timeout,
 	}
+
+	// read configuration file
+	confFile, err := os.OpenFile(filepath.Join(confPath, "rabbitfs.conf.json"), os.O_RDWR|os.O_CREATE, 0644)
+	defer confFile.Close()
+	if err != nil {
+		return nil, err
+	}
+	// confBytes, err := ioutil.ReadFile(filepath.Join(confPath, "rabbitfs.conf.json"))
+	confBytes, err := ioutil.ReadAll(confFile)
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(confBytes, &ss.conf); err != nil {
+		return nil, err
+	}
+
 	if err = ss.loadVolumes(volumeDir); err != nil {
 		return nil, err
 	}
+	volIDIPFile, err := os.OpenFile(filepath.Join(volumeDir, "volIDIPs.json"), os.O_RDWR|os.O_CREATE, 0644)
+	defer volIDIPFile.Close()
+	if err != nil {
+		return nil, err
+	}
+	volidipBytes, err := ioutil.ReadAll(volIDIPFile)
+	if err != nil {
+		return nil, err
+	}
+	if len(volidipBytes) > 0 {
+		if err = json.Unmarshal(volidipBytes, &ss.localVolIDIPs); err != nil {
+			return nil, err
+		}
+	}
+
+	// ss.keepSendingHearbeats()
+
 	ss.router.HandleFunc("/{fileID}", ss.uploadHandler).Methods("POST")
 	ss.router.HandleFunc("/{fileID}", ss.getFileHandler).Methods("GET")
-	ss.router.HandleFunc("/vol/{volID}", ss.createVolumeHandler).Methods("POST")
+	ss.router.HandleFunc("/replicate/{fileID}", ss.replicateUploadHandler).Methods("POST")
+	ss.router.HandleFunc("/vol/create", ss.createVolumeHandler).Methods("POST")
+	ss.router.HandleFunc("/store/stat", ss.getStatHandler)
 	return
 }
 
@@ -54,7 +92,7 @@ func (ss *StoreServer) ListenAndServe() {
 		WriteTimeout: ss.timeout,
 	}
 	if err := s.ListenAndServe(); err != nil {
-		log.Fatalf("store server failed: %s", err.Error())
+		panic("store server error: " + err.Error())
 	}
 }
 
@@ -86,3 +124,10 @@ func (ss *StoreServer) loadVolumes(volumeDir string) error {
 	}
 	return nil
 }
+
+// func (ss *StoreServer) keepSendingHearbeats() {
+// 	ticker := time.NewTicker(ss.pulse)
+// 	for range ticker.C {
+
+// 	}
+// }

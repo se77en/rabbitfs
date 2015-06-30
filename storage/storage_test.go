@@ -90,6 +90,12 @@ func TestBehavior(t *testing.T) {
 	if err = vol.AppendNeedle(n2I); err != nil {
 		t.Error(err)
 	}
+	fmt.Println("Append Needle 2 again, should get error")
+	if err = vol.AppendNeedle(n2I); err != nil {
+		fmt.Println("expected error: ", err.Error())
+	} else {
+		t.Error("append same needle againshould get error")
+	}
 	fmt.Println("Get Needle 1")
 	if n1O, err = vol.GetNeedle(uint64(testKey1), testCookie1); err != nil {
 		t.Error(err)

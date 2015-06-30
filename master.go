@@ -1,16 +1,6 @@
 package main
 
-import (
-	"net/http"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
-	"github.com/gorilla/mux"
-	"github.com/lilwulin/rabbitfs/log"
-	"github.com/lilwulin/rabbitfs/raftkv"
-)
+import "os"
 
 var masterCommand = &command{
 	name: "master",
@@ -34,40 +24,40 @@ type master struct {
 }
 
 func runMaster() {
-	r := mux.NewRouter()
-	r.HandleFunc("{fileID}", getFileHandler).Methods("GET")
-	r.HandleFunc("/update", updateHandler)
-	r.HandleFunc("/assign", assignHandler)
-	r.HandleFunc("/vol/grow", growHandler)
+	// r := mux.NewRouter()
+	// r.HandleFunc("{fileID}", getFileHandler).Methods("GET")
+	// r.HandleFunc("/update", updateHandler)
+	// r.HandleFunc("/assign", assignHandler)
+	// r.HandleFunc("/vol/grow", growHandler)
 
-	// Listening address
-	la := *mIP + ":" + strconv.Itoa(*mPort)
-	log.Infoln(0, "master listening on: ", la)
+	// // Listening address
+	// la := *mIP + ":" + strconv.Itoa(*mPort)
+	// log.Infoln(0, "master listening on: ", la)
 
-	// master peers
-	peers := strings.Split(*mPeers, ",")
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		kvs, err := raftkv.NewLevelDB(*mFolder + "/leveldb/" + la)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		rkv1, err := raftkv.NewRaftkv(
-			peers, kvs,
-			*mFolder+"/raft"+la+"/", *mIP,
-			*mPort, "/raftkv",
-			*mKVtimeout*time.Millisecond, 0)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		rkv1.ListenAndServe()
-	}()
-	// // transporter := raft.NewHTTPTransporter("/raft", 0)
-	// mst := &master{}
-	// raft.NewServer(la, *mFolder, transporter, nil, mst, "")
+	// // master peers
+	// peers := strings.Split(*mPeers, ",")
+	// go func() {
+	// 	time.Sleep(500 * time.Millisecond)
+	// 	kvs, err := raftkv.NewLevelDB(*mFolder + "/leveldb/" + la)
+	// 	if err != nil {
+	// 		log.Fatalln(err)
+	// 	}
+	// 	rkv1, err := raftkv.NewRaftkv(
+	// 		peers, kvs,
+	// 		*mFolder+"/raft"+la+"/", *mIP,
+	// 		*mPort, "/raftkv",
+	// 		*mKVtimeout*time.Millisecond, 0)
+	// 	if err != nil {
+	// 		log.Fatalln(err)
+	// 	}
+	// 	rkv1.ListenAndServe()
+	// }()
+	// // // transporter := raft.NewHTTPTransporter("/raft", 0)
+	// // mst := &master{}
+	// // raft.NewServer(la, *mFolder, transporter, nil, mst, "")
 
-	err := http.ListenAndServe(la, r)
-	if err != nil {
-		log.Fatalf("ListenAndServe error: %s", err.Error())
-	}
+	// err := http.ListenAndServe(la, r)
+	// if err != nil {
+	// 	log.Fatalf("ListenAndServe error: %s", err.Error())
+	// }
 }
