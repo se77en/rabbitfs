@@ -26,16 +26,16 @@ var (
 
 func TestRunServer(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	// dir1, err := NewDirectory("./TestDir1", "127.0.0.1:9331", 1*time.Second, 500, 10*time.Second, 0, 0)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// go dir1.ListenAndServe()
-	// dir2, err := NewDirectory("./TestDir2", "127.0.0.1:9332", 1*time.Second, 500, 10*time.Second, 0, 0)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// go dir2.ListenAndServe()
+	dir1, err := NewDirectory("./TestDir1", "127.0.0.1:9331", 1*time.Second, 500, 10*time.Second, 0, 0)
+	if err != nil {
+		panic(err)
+	}
+	go dir1.ListenAndServe()
+	dir2, err := NewDirectory("./TestDir2", "127.0.0.1:9332", 1*time.Second, 500, 10*time.Second, 0, 0)
+	if err != nil {
+		panic(err)
+	}
+	go dir2.ListenAndServe()
 	dir3, err := NewDirectory("./TestDir3", "127.0.0.1:9333", 1*time.Second, 500, 10*time.Second, 0, 0)
 	if err != nil {
 		panic(err)

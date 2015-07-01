@@ -27,6 +27,7 @@ type result struct {
 }
 
 func (ss *StoreServer) uploadHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	vars := mux.Vars(r)
 	fileIDStr := vars["fileID"]
 	volID, needleID, cookie, err := newFileID(fileIDStr)
@@ -100,6 +101,7 @@ func replicateUpload(url string, filename string, data []byte) error {
 }
 
 func (ss *StoreServer) replicateUploadHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
 	vars := mux.Vars(r)
 	fileIDStr := vars["fileID"]
 	volID, needleID, cookie, err := newFileID(fileIDStr)

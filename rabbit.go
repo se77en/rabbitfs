@@ -8,10 +8,6 @@ import (
 	"github.com/lilwulin/rabbitfs/commandline"
 )
 
-// var commands = []*command{
-// 	masterCommand,
-// }
-
 func main() {
 	flag.Parse()
 	args := flag.Args()

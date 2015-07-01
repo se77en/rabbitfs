@@ -86,7 +86,7 @@ func NewRaftServer(
 		err := rs.Join(rs.peers)
 		if err != nil {
 			// if cannot join clusters, joins itself
-			log4go.Info("i am %s, i join myself\n", rs.Server.Name())
+			log4go.Info("%s join itself\n", rs.Server.Name())
 			_, err = rs.Server.Do(&raft.DefaultJoinCommand{
 				Name:             rs.Server.Name(),
 				ConnectionString: Addr,
@@ -132,7 +132,7 @@ func (rs *RaftServer) Join(peers []string) (e error) {
 	}
 
 	for _, peer := range peers {
-		log4go.Info("i am %s, joining %s", rs.Server.Name(), peer)
+		log4go.Info("%s is joining %s", rs.Server.Name(), peer)
 		if peer == rs.httpAddr {
 			continue
 		}

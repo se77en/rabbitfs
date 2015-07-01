@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"time"
 
+	"code.google.com/p/log4go"
+
 	"github.com/lilwulin/rabbitfs/server"
 )
 
@@ -21,7 +23,7 @@ func init() {
 var (
 	dirPort       = DirCmd.Flag.Int("port", 9666, "http listen port")
 	dirIP         = DirCmd.Flag.String("ip", "127.0.0.1", "ip address")
-	dirConfPath   = DirCmd.Flag.String("confpath", filepath.Join(os.TempDir(), "rabbitfs"), "configuration path")
+	dirConfPath   = DirCmd.Flag.String("confpath", "/etc/rabbitfs", "configuration path")
 	maxVolumeSize = DirCmd.Flag.Int64("max_volume_size", 500, "max size of the volume file in MB")
 	pulse         = DirCmd.Flag.Int64("pulse", 2000, "the interval(in millisecond) of directory server polling store server")
 	timeout       = DirCmd.Flag.Int64("timeout", 10000, "maximum duration(in millisecond) before server timing out")
@@ -35,7 +37,7 @@ func cmdDirRun(args []string) error {
 		*cpu = runtime.NumCPU()
 	}
 	runtime.GOMAXPROCS(*cpu)
-
+	log4go.Info("configuration path: %s", *dirConfPath)
 	if _, err := os.Stat(*dirConfPath); err != nil {
 		if os.IsNotExist(err) {
 			if err = os.MkdirAll(*dirConfPath, os.ModePerm); err != nil {

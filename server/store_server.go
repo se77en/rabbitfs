@@ -88,7 +88,7 @@ func NewStoreServer(
 }
 
 func (ss *StoreServer) ListenAndServe() {
-	log4go.Info("store server start listening on: %s", ss.Addr)
+	log4go.Info("store server starts listening on: %s", ss.Addr)
 	s := &http.Server{
 		Addr:         ss.Addr,
 		Handler:      ss.router,
@@ -128,10 +128,3 @@ func (ss *StoreServer) loadVolumes(volumeDir string) error {
 	}
 	return nil
 }
-
-// func (ss *StoreServer) keepSendingHearbeats() {
-// 	ticker := time.NewTicker(ss.pulse)
-// 	for range ticker.C {
-
-// 	}
-// }

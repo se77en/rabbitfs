@@ -146,10 +146,7 @@ func (dir *Directory) proxyToLeader(f func(w http.ResponseWriter, r *http.Reques
 }
 
 func (dir *Directory) ListenAndServe() {
-	connectString := dir.Addr
-	if connectString[:7] == "http://" {
-		connectString = connectString[7:]
-	}
+	log4go.Info("directory server starts listening on %s", dir.Addr)
 	s := &http.Server{
 		Addr:         dir.Addr,
 		Handler:      dir.router,
@@ -228,6 +225,7 @@ func (dir *Directory) tickerGetStoreStat() {
 				resp, err := client.Get("http://" + storeAddr + "/store/stat")
 				if err != nil {
 					log4go.Error(err.Error())
+					// resp.Body.Close()
 					continue
 				}
 				if resp.StatusCode != http.StatusOK {
@@ -244,6 +242,7 @@ func (dir *Directory) tickerGetStoreStat() {
 						dir.volInfoMap[volInfo.ID] = volInfo
 					}
 				}
+				resp.Body.Close()
 			}
 		}(storeAddr)
 	}
