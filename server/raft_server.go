@@ -11,7 +11,7 @@ import (
 
 	"code.google.com/p/log4go"
 
-	"github.com/goraft/raft"
+	"github.com/chrislusf/raft"
 	"github.com/gorilla/mux"
 )
 

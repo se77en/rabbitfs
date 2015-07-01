@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.com/goraft/raft"
+	"github.com/chrislusf/raft"
 )
 
 func init() {
