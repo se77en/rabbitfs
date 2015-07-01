@@ -3,5 +3,8 @@ go:
  - 1.4.2
  - tip
 
+before_install:
+ - export PATH=/home/travis/gopath/bin:$PATH
+
 install:
  - go get ./go/...
