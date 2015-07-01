@@ -12,10 +12,10 @@ of disk operation to read i-node.
 ##Architecture
 Following Haystack, RabbitFS has two major components: **Directory Server** and **Store Server**.
 
-**Directory Server - **When uploading a file, client asks directory to assign a file id, and a
+**Directory Server** - When uploading a file, client asks directory to assign a file id, and a
 store server's address. Directory will randomly select a store server, and use a volume id, uuid, and a random number(cookie) to construct a file id. Directory Server also periodically polling the store servers' status
 
-**Store Server - **Store Server manages multiple volume files, and handles client's read, write, delete operation.
+**Store Server** - Store Server manages multiple volume files, and handles client's read, write, delete operation.
 
 ##Usage
 ###Start Server
