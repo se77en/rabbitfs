@@ -205,8 +205,8 @@ func (dir *Directory) pickStoreServer(replicateStr string) ([]string, error) {
 			storesTmp = append(storesTmp, store)
 		}
 	}
-	if len(storesTmp) == 0 {
-		return nil, fmt.Errorf("does't have enough store machine")
+	if len(storesTmp) < replicateCount {
+		return nil, fmt.Errorf("only got %d stores, does't have enough store machine for %d replication", len(storesTmp), replicateCount)
 	}
 	// stores = append(candidateStore, dir.conf.Stores...)
 	for i := 0; i < replicateCount; i++ {
