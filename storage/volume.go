@@ -198,8 +198,18 @@ func (vol *Volume) increaseDeletedSize(size uint64) (deletedSize uint64, err err
 	return
 }
 
+func (vol *Volume) resetDeletedSize() error {
+	deletedSizeByte := make([]byte, 8)
+	deletedSize := uint64(0)
+	UInt64ToBytes(deletedSizeByte, deletedSize)
+	return vol.mapping.db.Put([]byte(KeyDeletedSize), deletedSizeByte, nil)
+}
+
 func (vol *Volume) cleanNeedles() error {
 	log4go.Info("volume%d is cleaning", vol.ID)
+	if err := vol.resetDeletedSize(); err != nil {
+		return err
+	}
 	tmpStoreFileName := vol.StoreFile.Name() + ".tmp"
 	tmpStoreFile, err := os.OpenFile(tmpStoreFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
