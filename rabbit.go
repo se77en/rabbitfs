@@ -3,12 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand"
+	"time"
 
 	"code.google.com/p/log4go"
 	"github.com/lilwulin/rabbitfs/commandline"
 )
 
 func main() {
+	rand.Seed(time.Now().Unix())
 	flag.Parse()
 	args := flag.Args()
 	if len(args) == 0 {
