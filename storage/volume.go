@@ -53,8 +53,7 @@ func (vol *Volume) AppendNeedle(n *Needle) error {
 	if vol.readOnly {
 		return fmt.Errorf("volume %d is read-only", vol.ID)
 	}
-	if _, _, err := vol.mapping.Get(n.Key, n.Cookie); err != leveldb.ErrNotFound &&
-		!vol.isTmp {
+	if _, _, err := vol.mapping.Get(n.Key, n.Cookie); err != leveldb.ErrNotFound && !vol.isTmp {
 		return errors.New("file exists")
 	}
 	vol.fileLock.Lock()
@@ -62,7 +61,7 @@ func (vol *Volume) AppendNeedle(n *Needle) error {
 	// cleaning process is very time-consuming.
 	// so I think it's necessary to handle AppendNeedle
 	// during cleaning
-	if vol.isCleaning {
+	if vol.volTmp != nil {
 		return vol.volTmp.AppendNeedle(n)
 	}
 	offset, err := vol.StoreFile.Seek(0, os.SEEK_CUR)
@@ -166,13 +165,21 @@ func (vol *Volume) DelNeedle(key uint64, cookie uint32) error {
 	if err != nil {
 		return err
 	}
-	if float32(deletedSize)/float32(fi.Size()) > vol.garbageThreshold {
-		go func() {
-			if err := vol.cleanNeedles(); err != nil {
-				log4go.Error(err.Error())
+	if !vol.isTmp {
+		if !vol.isCleaning {
+			if float32(deletedSize)/float32(fi.Size()) > vol.garbageThreshold {
+				vol.isCleaning = true
+				go func() {
+					if err := vol.cleanNeedles(); err != nil {
+						log4go.Error(err.Error())
+					}
+				}()
 			}
-		}()
+		} else if vol.volTmp != nil {
+			vol.volTmp.DelNeedle(key, cookie)
+		}
 	}
+
 	return vol.mapping.Del(key, cookie)
 }
 
@@ -218,12 +225,17 @@ func (vol *Volume) cleanNeedles() error {
 	if err != nil {
 		return err
 	}
+	tmpMappingName := vol.mappingName + "_tmp"
+	mappingTmp, err := NewLevelDBMapping(tmpMappingName)
+	if err != nil {
+		return err
+	}
 	vol.volTmp = &Volume{
 		StoreFile: tmpStoreFile,
-		mapping:   vol.mapping,
+		mapping:   mappingTmp,
 		isTmp:     true,
 	}
-	vol.isCleaning = true
+	// vol.isCleaning = true
 	// iterate the mapping, get the undeleted needles,
 	// and append them to the volTmp
 	err = vol.mapping.Iter(func(key uint64, cookie uint32) error {
@@ -270,5 +282,17 @@ func (vol *Volume) cleanNeedles() error {
 	if err != nil {
 		return err
 	}
-	return err
+	// switch the mapping
+	vol.mapping.db.Close()
+	if err = os.RemoveAll(vol.mappingName); err != nil {
+		return err
+	}
+	mappingTmp.db.Close()
+	if err = os.Rename(tmpMappingName, vol.mappingName); err != nil {
+		return err
+	}
+	if vol.mapping, err = NewLevelDBMapping(vol.mappingName); err != nil {
+		return err
+	}
+	return nil
 }

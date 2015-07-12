@@ -20,6 +20,7 @@ var (
 	outputDeletedPath string
 	pic1Name          string
 	pic2Name          string
+	volTest           *Volume
 )
 
 func init() {
@@ -45,7 +46,6 @@ func TestBehavior(t *testing.T) {
 	testKey2 := 1
 	testCookie2 := rand.Uint32()
 
-	var vol *Volume
 	var err error
 	fmt.Println("Open or Create data file")
 	file, err := os.OpenFile("./testData/data", os.O_RDWR|os.O_CREATE, 0644)
@@ -53,13 +53,13 @@ func TestBehavior(t *testing.T) {
 		t.Error(err)
 	}
 	fmt.Println("Create Volume")
-	vol, err = NewVolume(0, file, "./test_mapping", 0.4)
+	volTest, err = NewVolume(0, file, "./test_mapping", 0.4)
 	if err != nil {
 		t.Error(err)
 	}
 
 	fmt.Println("Get non-existent key-cookie")
-	if _, _, err = vol.mapping.Get(1024, 1024); err == nil {
+	if _, _, err = volTest.mapping.Get(1024, 1024); err == nil {
 		t.Error("expect error not found")
 	}
 
@@ -83,25 +83,25 @@ func TestBehavior(t *testing.T) {
 	fmt.Println("Create Needle 2")
 	n2I = NewNeedle(testCookie2, uint64(testKey2), f2DataI, []byte(pic2Name))
 	fmt.Println("Append Needle 1")
-	if err = vol.AppendNeedle(n1I); err != nil {
+	if err = volTest.AppendNeedle(n1I); err != nil {
 		t.Error(err)
 	}
 	fmt.Println("Append Needle 2")
-	if err = vol.AppendNeedle(n2I); err != nil {
+	if err = volTest.AppendNeedle(n2I); err != nil {
 		t.Error(err)
 	}
 	fmt.Println("Append Needle 2 again, should get error")
-	if err = vol.AppendNeedle(n2I); err != nil {
+	if err = volTest.AppendNeedle(n2I); err != nil {
 		fmt.Println("expected error: ", err.Error())
 	} else {
 		t.Error("append same needle againshould get error")
 	}
 	fmt.Println("Get Needle 1")
-	if n1O, err = vol.GetNeedle(uint64(testKey1), testCookie1); err != nil {
+	if n1O, err = volTest.GetNeedle(uint64(testKey1), testCookie1); err != nil {
 		t.Error(err)
 	}
 	fmt.Println("Get Needle 2")
-	if n2O, err = vol.GetNeedle(uint64(testKey2), testCookie2); err != nil {
+	if n2O, err = volTest.GetNeedle(uint64(testKey2), testCookie2); err != nil {
 		t.Error(err)
 	}
 
@@ -127,26 +127,26 @@ func TestBehavior(t *testing.T) {
 	}
 
 	fmt.Println("Delete Needle 1")
-	oldFileInfo, _ := vol.StoreFile.Stat()
+	oldFileInfo, _ := volTest.StoreFile.Stat()
 	fmt.Println("the old StoreFile size is ", oldFileInfo.Size())
-	if err := vol.DelNeedle(uint64(testKey1), testCookie1); err != nil {
+	if err := volTest.DelNeedle(uint64(testKey1), testCookie1); err != nil {
 		t.Error(err)
 	}
-	_, err = vol.GetNeedle(uint64(testKey1), testCookie1)
+	_, err = volTest.GetNeedle(uint64(testKey1), testCookie1)
 	if err == nil {
 		t.Error("expect error, but got nil")
 	} else {
 		fmt.Println(err)
 	}
 	time.Sleep(200 * time.Millisecond)
-	newFileInfo, _ := vol.StoreFile.Stat()
+	newFileInfo, _ := volTest.StoreFile.Stat()
 	fmt.Println("the new StoreFile size is ", newFileInfo.Size())
 	if oldFileInfo.Size() <= newFileInfo.Size() {
 		t.Errorf("expect old StoreFile size to be bigger than new StoreFile size, but got old size:%d, new size:%d\n",
 			oldFileInfo.Size(), newFileInfo.Size())
 	}
 	fmt.Println("Get Needle 2")
-	if n2O, err = vol.GetNeedle(uint64(testKey2), testCookie2); err != nil {
+	if n2O, err = volTest.GetNeedle(uint64(testKey2), testCookie2); err != nil {
 		t.Error(err)
 	}
 	fmt.Println("Write images to output-after-deleted")
@@ -154,6 +154,88 @@ func TestBehavior(t *testing.T) {
 	if err = ioutil.WriteFile(path.Join(outputDeletedPath, string(n2O.Name)), f2DataO, 0777); err != nil {
 		t.Error(err)
 	}
+}
+
+type idCookie struct {
+	id     uint64
+	cookie uint32
+}
+
+type offsetSize struct {
+	offset uint32
+	size   uint32
+}
+
+// func TestChangeLevelDBDirectory(t *testing.T) {
+// 	printTestInfo("TEST CHANGE LEVELDB DIRECTORY")
+// 	defer helper.RemoveDirs("./test_mapping", "./test_mapping_tmp")
+// 	m, err := NewLevelDBMapping("./test_mapping")
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+// 	m.Put(1, 1, 21, 21)
+// 	m.Put(2, 2, 31, 31)
+// 	m.db.Close()
+// 	if err = os.Rename("./test_mapping", "./test_mapping_tmp"); err != nil {
+// 		t.Error(err)
+// 	}
+// 	m, err = NewLevelDBMapping("./test_mapping_tmp")
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+// 	o, s, err := m.Get(1, 1)
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+// 	if o != 21 || s != 21 {
+// 		t.Error("should be the same after change dir name")
+// 	}
+
+// 	o, s, err = m.Get(2, 2)
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+// 	if o != 31 || s != 31 {
+// 		t.Error("should be the same after change dir name")
+// 	}
+// }
+
+var memMapping = map[idCookie]offsetSize{}
+
+func TestCleanProcess(t *testing.T) {
+	printTestInfo("TESTING CLEANING PROCESS")
+	defer helper.RemoveDirs("./testData/data", "./test_mapping")
+	f1DataI, err := ioutil.ReadFile(path.Join(inputPath, pic1Name))
+	if err != nil {
+		t.Error(err)
+	}
+	file, err := os.OpenFile("./testData/data", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		t.Error(err)
+	}
+	volTest, err = NewVolume(0, file, "./test_mapping", 0.4)
+
+	for i := 0; i < 1500; i++ {
+		n := NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name))
+		if err := volTest.AppendNeedle(n); err != nil {
+			t.Error(err)
+		}
+		o, s, _ := volTest.mapping.Get(uint64(i), uint32(i))
+		memMapping[idCookie{id: uint64(i), cookie: uint32(i)}] = offsetSize{offset: o, size: s}
+	}
+
+	for i := 0; i < 1400; i++ {
+		if err := volTest.DelNeedle(uint64(i), uint32(i)); err != nil {
+			t.Error(err)
+		}
+		go func(i int, t *testing.T) {
+			n := NewNeedle(uint32(i), uint64(i), f1DataI, []byte(pic1Name))
+			if err := volTest.AppendNeedle(n); err != nil {
+				t.Error(err)
+			}
+		}(i, t)
+	}
+
 }
 
 func TestNameTooLong(t *testing.T) {
